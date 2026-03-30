@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+data/downloads/
+data/state/
+data/history.db
+*.class
+.idea/
+*.iml
