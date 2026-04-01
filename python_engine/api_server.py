@@ -404,6 +404,19 @@ def get_algorithm_stats(torrent_id: str):
     return jsonify(rows)
 
 
+@app.route('/torrents/<torrent_id>/logs', methods=['GET'])
+def get_torrent_logs(torrent_id: str):
+    """Get live log messages from a running download."""
+    manager = get_manager()
+    download = manager.get_download(torrent_id)
+    if download is None:
+        return jsonify({"error": "Torrent not found"}), 404
+
+    since = request.args.get('since', 0, type=int)
+    logs = download.get_logs(since_seq=since)
+    return jsonify({"logs": logs})
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""

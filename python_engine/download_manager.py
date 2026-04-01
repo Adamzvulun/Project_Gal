@@ -7,6 +7,7 @@ and coordinates the overall download flow.
 """
 
 import asyncio
+import collections
 import json
 import logging
 import os
@@ -126,10 +127,29 @@ class Download:
         # Round-robin state
         self._rr_index = 0
 
+        # Live log buffer (last 200 messages for GUI polling)
+        self._log_buffer = collections.deque(maxlen=200)
+        self._log_counter = 0
+
         # Event callbacks
         self._on_progress = None
         self._on_complete = None
         self._on_state_change = None
+
+    def _log(self, message: str):
+        """Add a message to the live log buffer."""
+        self._log_counter += 1
+        entry = {
+            "seq": self._log_counter,
+            "time": round(time.time(), 2),
+            "msg": message
+        }
+        self._log_buffer.append(entry)
+        logger.info(f"[{self.id}] {message}")
+
+    def get_logs(self, since_seq: int = 0) -> List[dict]:
+        """Get log entries newer than since_seq."""
+        return [e for e in self._log_buffer if e["seq"] > since_seq]
 
     @property
     def progress(self) -> float:
@@ -164,7 +184,8 @@ class Download:
         self.state = DownloadState.RUNNING
         self.stats.start_time = time.time()
 
-        logger.info(f"Starting download: {self.torrent.name} ({self.id})")
+        self._log(f"Starting download: {self.torrent.name}")
+        self._log(f"Size: {self.torrent.total_size} bytes, Pieces: {self.torrent.num_pieces}, Tracker: {self.torrent.announce}")
 
         self._main_task = asyncio.create_task(self._download_loop())
 
@@ -181,11 +202,13 @@ class Download:
             self._tracker.left = self.torrent.total_size
 
             # Initial announce
+            self._log(f"Contacting tracker: {self.torrent.announce}")
             response = await self._tracker.announce(event='started',
                                                     left=self.torrent.total_size)
             for peer in response.peers:
                 self._known_peers.add(peer)
             self.stats.total_peers_seen = len(self._known_peers)
+            self._log(f"Tracker responded: {len(response.peers)} peers found")
 
             # Start choke/unchoke timer
             self._choke_task = asyncio.create_task(self._choke_loop())
@@ -227,9 +250,10 @@ class Download:
                 await self._complete_download()
 
         except asyncio.CancelledError:
-            pass
+            self._log("Download cancelled")
         except Exception as e:
-            logger.error(f"Download error: {e}")
+            self._log(f"Download error: {e}")
+            logger.error(f"Download error: {e}", exc_info=True)
             self.state = DownloadState.ERROR
         finally:
             self._save_state()
@@ -287,8 +311,10 @@ class Download:
             # Start message loop
             await conn.start_message_loop()
 
-            logger.info(f"Connected to peer {peer_key}")
+            self._log(f"Connected to peer {peer_key}")
         except PeerConnectionError as e:
+            logger.debug(f"Failed to connect to {peer_key}: {e}")
+        except Exception as e:
             logger.debug(f"Failed to connect to {peer_key}: {e}")
 
     async def _on_peer_message(self, conn: PeerConnection, message: PeerMessage):
@@ -323,13 +349,17 @@ class Download:
                     if self.piece_manager.verify_piece(piece_idx):
                         self.security.report_successful_piece(peer_key, piece_idx)
                         await self._write_piece(piece_idx)
+                        done = sum(1 for p in self.piece_manager.pieces if p.status == PieceStatus.COMPLETED)
+                        self._log(f"Piece {piece_idx} verified OK ({done}/{self.torrent.num_pieces})")
                         # Announce to all peers
                         await self._broadcast_have(piece_idx)
                         if self._on_progress:
                             self._on_progress(self)
                     else:
+                        self._log(f"Piece {piece_idx} HASH FAILED from {peer_key}")
                         self.security.report_hash_failure(peer_key, piece_idx)
                         if self.security.is_peer_banned(peer_key):
+                            self._log(f"Banned peer {peer_key} (too many hash failures)")
                             await conn.disconnect()
 
     def _peer_has_needed_pieces(self, conn: PeerConnection) -> bool:
@@ -503,9 +533,10 @@ class Download:
         self.state = DownloadState.COMPLETED
         self.stats.end_time = time.time()
 
-        logger.info(
-            f"Download complete: {self.torrent.name} "
-            f"({self.stats.elapsed_time:.1f}s)"
+        self._log(
+            f"Download complete! {self.torrent.name} "
+            f"in {self.stats.elapsed_time:.1f}s "
+            f"(avg {self.stats.average_speed / 1024:.1f} KB/s)"
         )
 
         if self._tracker:

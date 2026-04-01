@@ -287,6 +287,28 @@ public class ApiService {
     }
 
     /**
+     * Get live log messages from a running download.
+     *
+     * @param torrentId The torrent ID.
+     * @param sinceSeq  Only return logs with seq greater than this.
+     * @return JSONArray of log entries.
+     * @throws IOException  If there is a network error.
+     * @throws ApiException If the server returns an error.
+     */
+    public JSONArray getLogs(String torrentId, int sinceSeq) throws IOException, ApiException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/torrents/" + torrentId + "/logs?since=" + sinceSeq))
+                .GET()
+                .build();
+
+        HttpResponse<String> response = sendRequest(request);
+        checkResponse(response, 200);
+
+        JSONObject json = new JSONObject(response.body());
+        return json.getJSONArray("logs");
+    }
+
+    /**
      * Check if the API server is reachable.
      *
      * @return true if the server responds to health check.

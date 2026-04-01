@@ -7,10 +7,15 @@ import java.awt.event.ActionEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * Main GUI window for the BitTorrent client.
@@ -44,6 +49,9 @@ public class TorrentClientGUI extends JFrame {
     private JButton pauseButton;
     private JButton resumeButton;
     private JButton cancelButton;
+
+    // Track last log sequence per torrent for incremental polling
+    private final Map<String, Integer> logSeqTracker = new HashMap<>();
 
     /**
      * Create the main application window.
@@ -327,6 +335,29 @@ public class TorrentClientGUI extends JFrame {
             try {
                 List<ApiService.TorrentStatus> statuses = apiService.getStatus();
                 SwingUtilities.invokeLater(() -> updateTable(statuses));
+
+                // Poll logs for each active download
+                for (ApiService.TorrentStatus status : statuses) {
+                    if ("Running".equals(status.state) || "Error".equals(status.state)) {
+                        int since = logSeqTracker.getOrDefault(status.id, 0);
+                        try {
+                            JSONArray logs = apiService.getLogs(status.id, since);
+                            if (logs.length() > 0) {
+                                int maxSeq = since;
+                                for (int i = 0; i < logs.length(); i++) {
+                                    JSONObject entry = logs.getJSONObject(i);
+                                    int seq = entry.getInt("seq");
+                                    String msg = entry.getString("msg");
+                                    if (seq > maxSeq) maxSeq = seq;
+                                    SwingUtilities.invokeLater(() -> log("[engine] " + msg));
+                                }
+                                logSeqTracker.put(status.id, maxSeq);
+                            }
+                        } catch (Exception ex) {
+                            // Ignore log polling errors
+                        }
+                    }
+                }
             } catch (Exception e) {
                 // Server might not be running yet
             }
