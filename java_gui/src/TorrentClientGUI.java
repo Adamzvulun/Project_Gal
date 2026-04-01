@@ -66,18 +66,7 @@ public class TorrentClientGUI extends JFrame {
         setMinimumSize(new Dimension(700, 400));
         setLocationRelativeTo(null);
 
-        // Main layout
-        JPanel mainPanel = new JPanel(new BorderLayout(5, 5));
-        mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
-
-        // Toolbar
-        mainPanel.add(createToolbar(), BorderLayout.NORTH);
-
-        // Split pane: downloads table on top, logs on bottom
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        splitPane.setResizeWeight(0.7);
-
-        // Downloads table
+        // Downloads table (must be created before toolbar, which references it)
         tableModel = new DefaultTableModel(COLUMN_NAMES, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
@@ -92,6 +81,18 @@ public class TorrentClientGUI extends JFrame {
         };
         downloadTable = new JTable(tableModel);
         configureTable();
+
+        // Main layout
+        JPanel mainPanel = new JPanel(new BorderLayout(5, 5));
+        mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
+
+        // Toolbar
+        mainPanel.add(createToolbar(), BorderLayout.NORTH);
+
+        // Split pane: downloads table on top, logs on bottom
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        splitPane.setResizeWeight(0.7);
+
         splitPane.setTopComponent(new JScrollPane(downloadTable));
 
         // Log area
