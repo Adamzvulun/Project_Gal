@@ -5,6 +5,8 @@ Provides a local HTTP API (Flask) that bridges the Python BitTorrent engine
 and the Java GUI client. Runs on localhost.
 """
 
+import asyncio
+import concurrent.futures
 import datetime
 import json
 import logging
@@ -33,6 +35,43 @@ app = Flask(__name__)
 # Global download manager (initialized on startup)
 _manager: Optional[DownloadManager] = None
 _db_lock = threading.Lock()
+
+# Persistent asyncio event loop running in a background thread
+_loop: Optional[asyncio.AbstractEventLoop] = None
+_loop_thread: Optional[threading.Thread] = None
+
+
+def _start_event_loop():
+    """Start the persistent asyncio event loop in a background daemon thread."""
+    global _loop, _loop_thread
+    if _loop is not None and _loop.is_running():
+        return
+
+    _loop = asyncio.new_event_loop()
+
+    def _run_loop():
+        asyncio.set_event_loop(_loop)
+        _loop.run_forever()
+
+    _loop_thread = threading.Thread(target=_run_loop, daemon=True)
+    _loop_thread.start()
+    logger.info("Background asyncio event loop started")
+
+
+def _run_async(coro, timeout=60):
+    """Submit a coroutine to the persistent event loop and wait for the result.
+
+    Args:
+        coro: The coroutine to run.
+        timeout: Maximum seconds to wait for result.
+
+    Returns:
+        The coroutine's return value.
+    """
+    if _loop is None or not _loop.is_running():
+        _start_event_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, _loop)
+    return future.result(timeout=timeout)
 
 
 def get_manager() -> DownloadManager:
@@ -184,8 +223,6 @@ def start_download():
     Accepts multipart/form-data with a 'torrent_file' field,
     or application/json with a 'torrent_path' field.
     """
-    import asyncio
-
     manager = get_manager()
 
     try:
@@ -215,9 +252,7 @@ def start_download():
         if algo_data.get('peer_algorithm') == 'round_robin':
             peer_algo = AlgorithmType.ROUND_ROBIN
 
-        # Create and start download
-        loop = asyncio.new_event_loop()
-
+        # Create and start download on the persistent event loop
         async def create_and_start():
             download = await manager.add_torrent(
                 torrent, piece_algo, peer_algo
@@ -225,8 +260,7 @@ def start_download():
             await download.start()
             return download
 
-        download = loop.run_until_complete(create_and_start())
-        loop.close()
+        download = _run_async(create_and_start())
 
         log_event_to_db(download.id, "download_started",
                         f"Started download: {torrent.name}")
@@ -267,15 +301,12 @@ def get_torrent_status(torrent_id: str):
 @app.route('/torrents/<torrent_id>/pause', methods=['POST'])
 def pause_download(torrent_id: str):
     """Pause a specific download."""
-    import asyncio
     manager = get_manager()
     download = manager.get_download(torrent_id)
     if download is None:
         return jsonify({"error": "Torrent not found"}), 404
 
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(manager.pause_download(torrent_id))
-    loop.close()
+    _run_async(manager.pause_download(torrent_id))
 
     save_torrent_to_db(download)
     log_event_to_db(torrent_id, "download_paused", "Download paused")
@@ -286,15 +317,12 @@ def pause_download(torrent_id: str):
 @app.route('/torrents/<torrent_id>/resume', methods=['POST'])
 def resume_download(torrent_id: str):
     """Resume a paused download."""
-    import asyncio
     manager = get_manager()
     download = manager.get_download(torrent_id)
     if download is None:
         return jsonify({"error": "Torrent not found"}), 404
 
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(manager.resume_download(torrent_id))
-    loop.close()
+    _run_async(manager.resume_download(torrent_id))
 
     log_event_to_db(torrent_id, "download_resumed", "Download resumed")
 
@@ -304,15 +332,12 @@ def resume_download(torrent_id: str):
 @app.route('/torrents/<torrent_id>/cancel', methods=['POST'])
 def cancel_download(torrent_id: str):
     """Cancel a specific download."""
-    import asyncio
     manager = get_manager()
     download = manager.get_download(torrent_id)
     if download is None:
         return jsonify({"error": "Torrent not found"}), 404
 
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(manager.cancel_download(torrent_id))
-    loop.close()
+    _run_async(manager.cancel_download(torrent_id))
 
     save_torrent_to_db(download)
     log_event_to_db(torrent_id, "download_cancelled", "Download cancelled")
@@ -388,12 +413,14 @@ def health_check():
 def create_app():
     """Create and configure the Flask application."""
     init_database()
+    _start_event_loop()
     return app
 
 
 def run_server(host: str = '127.0.0.1', port: int = 5000, debug: bool = False):
     """Run the API server."""
     init_database()
+    _start_event_loop()
     logger.info(f"Starting API server on {host}:{port}")
     app.run(host=host, port=port, debug=debug)
 

@@ -9,6 +9,7 @@ import hashlib
 import logging
 import random
 import threading
+import time
 from enum import Enum
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -145,6 +146,9 @@ class PieceManager:
 
         # Statistics
         self.rarest_selections: Dict[int, int] = {i: 0 for i in range(num_pieces)}
+
+        # Track when pieces entered IN_PROGRESS state for timeout detection
+        self._piece_start_times: Dict[int, float] = {}
 
         self._lock = threading.Lock()
 
@@ -309,7 +313,28 @@ class PieceManager:
         """
         piece = self.pieces[piece_index]
         piece.status = PieceStatus.IN_PROGRESS
+        self._piece_start_times[piece_index] = time.time()
         return piece.get_pending_blocks()
+
+    def reset_stale_pieces(self, timeout: float):
+        """Reset pieces that have been IN_PROGRESS longer than timeout.
+
+        This prevents pieces from getting stuck when a peer dies mid-transfer.
+
+        Args:
+            timeout: Seconds after which an IN_PROGRESS piece is considered stale.
+        """
+        now = time.time()
+        stale = []
+        for idx, start_time in list(self._piece_start_times.items()):
+            if idx < len(self.pieces) and self.pieces[idx].status == PieceStatus.IN_PROGRESS:
+                if now - start_time > timeout:
+                    stale.append(idx)
+
+        for idx in stale:
+            self.pieces[idx].reset()
+            del self._piece_start_times[idx]
+            logger.debug(f"Reset stale piece {idx} after {timeout}s timeout")
 
     def submit_block(self, piece_index: int, offset: int, data: bytes) -> bool:
         """Submit a received block to a piece.

@@ -28,6 +28,8 @@ CHOKE_INTERVAL = 10  # seconds between choke/unchoke decisions
 MAX_UNCHOKED_PEERS = 4  # number of peers to unchoke
 MAX_CONNECTIONS = 50
 KEEP_ALIVE_INTERVAL = 60  # seconds
+PIECE_REQUEST_TIMEOUT = 30  # seconds before resetting a stale in-progress piece
+PEER_CLEANUP_INTERVAL = 15  # seconds between dead peer cleanup passes
 
 
 class DownloadState(Enum):
@@ -198,9 +200,20 @@ class Download:
             await self._connect_to_peers()
 
             # Main piece request loop
+            last_cleanup = time.time()
             while not self.piece_manager.is_complete and self.state == DownloadState.RUNNING:
+                # Reset pieces stuck in IN_PROGRESS for too long
+                self.piece_manager.reset_stale_pieces(PIECE_REQUEST_TIMEOUT)
+
                 await self._request_pieces()
                 await asyncio.sleep(0.1)
+
+                # Periodically clean up dead peers and try new ones
+                now = time.time()
+                if now - last_cleanup > PEER_CLEANUP_INTERVAL:
+                    self._cleanup_dead_peers()
+                    await self._connect_to_peers()
+                    last_cleanup = now
 
                 # Update stats
                 self._update_speed()
@@ -221,8 +234,21 @@ class Download:
         finally:
             self._save_state()
 
+    def _cleanup_dead_peers(self):
+        """Remove disconnected peers from the connection pool."""
+        dead_keys = [
+            key for key, conn in self._connections.items()
+            if not conn.connected
+        ]
+        for key in dead_keys:
+            del self._connections[key]
+            self.piece_manager.remove_peer(key)
+            logger.debug(f"Cleaned up dead peer: {key}")
+
     async def _connect_to_peers(self):
         """Connect to known peers."""
+        self._cleanup_dead_peers()
+
         tasks = []
         for peer in list(self._known_peers):
             peer_key = f"{peer.ip}:{peer.port}"
@@ -440,38 +466,37 @@ class Download:
                     pass
 
     async def _write_piece(self, piece_index: int):
-        """Write a verified piece to the output file."""
+        """Write a verified piece to the output file(s).
+
+        Handles both single-file and multi-file torrents correctly by
+        tracking a cursor through the piece data and writing the right
+        slice to each file at the right offset.
+        """
         data = self.piece_manager.get_piece_data(piece_index)
         if data is None:
             return
 
         file_offsets = self.torrent.get_file_offset(piece_index)
-        for file_path, offset, length in file_offsets:
+        data_cursor = 0
+
+        for file_path, offset_in_file, length in file_offsets:
             full_path = os.path.join(self.download_dir, file_path)
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            os.makedirs(os.path.dirname(full_path) if os.path.dirname(full_path) else '.', exist_ok=True)
 
-            # Calculate which part of piece data to write
-            piece_start = offset - (self.torrent.get_file_offset(piece_index)[0][1]
-                                    if file_offsets else 0)
-
-            mode = 'r+b' if os.path.exists(full_path) else 'wb'
-            if mode == 'wb':
-                # Create file with correct size
+            # Pre-allocate file if it doesn't exist yet
+            if not os.path.exists(full_path):
                 file_size = next(
                     f.size for f in self.torrent.files if f.path == file_path
                 )
                 with open(full_path, 'wb') as f:
-                    f.seek(file_size - 1)
-                    f.write(b'\x00')
+                    f.truncate(file_size)
 
+            # Write the correct slice of piece data at the correct file offset
             with open(full_path, 'r+b') as f:
-                f.seek(offset)
-                # Write the relevant portion of piece data
-                data_offset = sum(
-                    length for fp, off, length in file_offsets
-                    if fp == file_path and off < offset
-                )
-                f.write(data[data_offset:data_offset + length])
+                f.seek(offset_in_file)
+                f.write(data[data_cursor:data_cursor + length])
+
+            data_cursor += length
 
     async def _complete_download(self):
         """Handle download completion."""
