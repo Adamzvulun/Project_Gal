@@ -440,10 +440,12 @@ class Download:
                 if conn._pending_requests >= MAX_PENDING_REQUESTS:
                     break
                 try:
+                    block.requested = True
                     await conn.send_request(
                         block.piece_index, block.offset, block.length
                     )
                 except PeerConnectionError:
+                    block.requested = False
                     break
 
     async def _choke_loop(self):

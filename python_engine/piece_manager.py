@@ -32,6 +32,7 @@ class Block:
         self.length = length
         self.data: Optional[bytes] = None
         self.received = False
+        self.requested = False
 
     def __repr__(self):
         return f"Block(piece={self.piece_index}, offset={self.offset}, len={self.length})"
@@ -95,8 +96,8 @@ class Piece:
         return bytes(self._data)
 
     def get_pending_blocks(self) -> List[Block]:
-        """Get blocks that haven't been received yet."""
-        return [b for b in self.blocks if not b.received]
+        """Get blocks that haven't been requested or received yet."""
+        return [b for b in self.blocks if not b.received and not b.requested]
 
     def reset(self):
         """Reset the piece to missing state (e.g., after hash failure)."""
@@ -105,6 +106,7 @@ class Piece:
         for block in self.blocks:
             block.data = None
             block.received = False
+            block.requested = False
 
 
 class PieceManager:
