@@ -363,6 +363,10 @@ class Download:
             data = message.block_data
 
             if data is not None:
+                # Skip if piece is already completed (late-arriving block from another peer)
+                if self.piece_manager.pieces[piece_idx].status == PieceStatus.COMPLETED:
+                    return
+
                 is_complete = self.piece_manager.submit_block(piece_idx, offset, data)
                 self.stats.bytes_downloaded += len(data)
 
@@ -370,7 +374,7 @@ class Download:
                     if self.piece_manager.verify_piece(piece_idx):
                         self.security.report_successful_piece(peer_key, piece_idx)
                         await self._write_piece(piece_idx)
-                        done = sum(1 for p in self.piece_manager.pieces if p.status == PieceStatus.COMPLETED)
+                        done = self.piece_manager.completed_pieces
                         self._log(f"Piece {piece_idx} verified OK ({done}/{self.torrent.num_pieces})")
                         # Announce to all peers
                         await self._broadcast_have(piece_idx)
@@ -391,25 +395,30 @@ class Download:
         return False
 
     async def _request_pieces(self):
-        """Request pieces from unchoked peers."""
+        """Request pieces from unchoked peers.
+
+        Each peer is assigned a different piece where possible to maximize
+        parallelism and avoid multiple peers downloading the same blocks.
+        """
+        # Track which IN_PROGRESS pieces are already claimed by a peer this round
+        claimed_pieces: Dict[int, str] = {}  # piece_idx -> peer_key
+
         for peer_key, conn in list(self._connections.items()):
-            if not conn.connected:
+            if not conn.connected or not conn.am_interested or conn.peer_choking:
                 continue
-            if not conn.am_interested:
-                continue
-            if conn.peer_choking:
+            if conn._pending_requests >= MAX_PENDING_REQUESTS:
                 continue
 
-            # First, try to continue any IN_PROGRESS piece this peer can serve
             piece_idx = None
+
+            # Try to continue an IN_PROGRESS piece not claimed by another peer
             for p in self.piece_manager.pieces:
                 if p.status == PieceStatus.IN_PROGRESS and conn.has_piece(p.index):
-                    pending = p.get_pending_blocks()
-                    if pending:
+                    if p.index not in claimed_pieces and p.get_pending_blocks():
                         piece_idx = p.index
                         break
 
-            # If no in-progress piece, select a new one
+            # If no unclaimed in-progress piece, select a new MISSING one
             if piece_idx is None:
                 if self.piece_algorithm == AlgorithmType.RAREST_FIRST:
                     piece_idx = self.piece_manager.select_piece_rarest_first(conn.peer_pieces)
@@ -418,6 +427,9 @@ class Download:
 
             if piece_idx is None:
                 continue
+
+            # Claim this piece for this peer
+            claimed_pieces[piece_idx] = peer_key
 
             piece = self.piece_manager.pieces[piece_idx]
             if piece.status == PieceStatus.MISSING:
