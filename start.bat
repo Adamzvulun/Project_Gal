@@ -1,6 +1,7 @@
 @echo off
 REM Project Gal - BitTorrent Client Launcher (Windows)
 REM Starts the Python API server and Java GUI with a single command.
+REM Auto-installs Python and Java via winget if missing.
 REM
 REM Usage:  start.bat
 REM
@@ -10,32 +11,72 @@ echo    Project Gal - BitTorrent Client
 echo ========================================
 echo.
 
-REM ---------- Check Python ----------
+REM ---------- Check and install Python ----------
 echo [1/5] Checking Python...
 where python >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: Python 3 is not installed.
-    echo        Install it from https://www.python.org/downloads/
+    echo        Python not found. Installing via winget...
+    where winget >nul 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo ERROR: winget is not available. Please install Python manually:
+        echo        https://www.python.org/downloads/
+        pause
+        exit /b 1
+    )
+    winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
+    if %ERRORLEVEL% NEQ 0 (
+        echo ERROR: Failed to install Python. Try running as Administrator,
+        echo        or install manually from https://www.python.org/downloads/
+        pause
+        exit /b 1
+    )
+    echo.
+    echo *** Python was just installed. Please close this window and ***
+    echo *** open a NEW Command Prompt, then run start.bat again.    ***
+    echo *** This is needed so Windows can find the python command.  ***
+    echo.
     pause
-    exit /b 1
+    exit /b 0
 )
 python --version
 
-REM ---------- Check Java ----------
+REM ---------- Check and install Java ----------
 echo [2/5] Checking Java...
 where java >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: Java is not installed.
-    echo        Install JDK 11+ from https://adoptium.net/
-    pause
-    exit /b 1
+    goto :install_java
 )
 where javac >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: javac not found. Install a full JDK, not just JRE.
+    goto :install_java
+)
+goto :java_ok
+
+:install_java
+echo        Java JDK not found. Installing via winget...
+where winget >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: winget is not available. Please install Java JDK manually:
+    echo        https://adoptium.net/
     pause
     exit /b 1
 )
+winget install -e --id EclipseAdoptium.Temurin.21.JDK --accept-source-agreements --accept-package-agreements
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: Failed to install Java. Try running as Administrator,
+    echo        or install manually from https://adoptium.net/
+    pause
+    exit /b 1
+)
+echo.
+echo *** Java JDK was just installed. Please close this window and ***
+echo *** open a NEW Command Prompt, then run start.bat again.      ***
+echo *** This is needed so Windows can find java and javac.        ***
+echo.
+pause
+exit /b 0
+
+:java_ok
 java -version 2>&1 | findstr /i "version"
 
 REM ---------- Install Python dependencies ----------

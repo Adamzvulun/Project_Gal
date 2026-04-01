@@ -2,6 +2,7 @@
 #
 # Project Gal - BitTorrent Client Launcher
 # Starts the Python API server and Java GUI with a single command.
+# Auto-installs Python and Java if missing (apt/brew/dnf).
 #
 # Usage:  ./start.sh
 #
@@ -23,24 +24,58 @@ echo -e "${CYAN}   Project Gal - BitTorrent Client${NC}"
 echo -e "${CYAN}========================================${NC}"
 echo ""
 
-# ---------- Check Python ----------
+# Detect package manager
+install_package() {
+    local package_name="$1"
+    local apt_name="$2"
+    local brew_name="$3"
+    local dnf_name="$4"
+
+    echo -e "       ${YELLOW}$package_name not found. Attempting to install...${NC}"
+
+    if command -v apt-get &>/dev/null; then
+        sudo apt-get update -qq && sudo apt-get install -y -qq "$apt_name"
+    elif command -v brew &>/dev/null; then
+        brew install "$brew_name"
+    elif command -v dnf &>/dev/null; then
+        sudo dnf install -y "$dnf_name"
+    elif command -v pacman &>/dev/null; then
+        sudo pacman -S --noconfirm "$apt_name"
+    else
+        echo -e "${RED}ERROR: Could not find a package manager (apt/brew/dnf/pacman).${NC}"
+        echo "       Please install $package_name manually."
+        exit 1
+    fi
+}
+
+# ---------- Check/Install Python ----------
 echo -e "${YELLOW}[1/5] Checking Python...${NC}"
 if ! command -v python3 &>/dev/null && ! command -v python &>/dev/null; then
-    echo -e "${RED}ERROR: Python 3 is not installed.${NC}"
-    echo "       Install it from https://www.python.org/downloads/"
-    exit 1
+    install_package "Python 3" "python3" "python@3" "python3"
 fi
 
 PYTHON=$(command -v python3 || command -v python)
 PY_VERSION=$($PYTHON --version 2>&1)
 echo -e "       Found: ${GREEN}$PY_VERSION${NC}"
 
-# ---------- Check Java ----------
+# Make sure pip is available
+if ! $PYTHON -m pip --version &>/dev/null; then
+    echo -e "       ${YELLOW}pip not found. Installing...${NC}"
+    install_package "python3-pip" "python3-pip" "python@3" "python3-pip"
+fi
+
+# ---------- Check/Install Java ----------
 echo -e "${YELLOW}[2/5] Checking Java...${NC}"
-if ! command -v java &>/dev/null || ! command -v javac &>/dev/null; then
-    echo -e "${RED}ERROR: Java JDK is not installed (need both java and javac).${NC}"
-    echo "       Install JDK 11+ from https://adoptium.net/"
-    exit 1
+NEED_JAVA=false
+if ! command -v java &>/dev/null; then
+    NEED_JAVA=true
+fi
+if ! command -v javac &>/dev/null; then
+    NEED_JAVA=true
+fi
+
+if [ "$NEED_JAVA" = true ]; then
+    install_package "Java JDK" "default-jdk" "openjdk" "java-21-openjdk-devel"
 fi
 
 JAVA_VERSION=$(java -version 2>&1 | head -1)
