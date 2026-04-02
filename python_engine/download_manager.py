@@ -405,19 +405,19 @@ class Download:
 
         piece_idx = None
 
-        # Try to continue an IN_PROGRESS piece this peer can serve
-        for p in self.piece_manager.pieces:
-            if p.status == PieceStatus.IN_PROGRESS and conn.has_piece(p.index):
-                if p.get_pending_blocks():
-                    piece_idx = p.index
-                    break
+        # Prefer a fresh MISSING piece so each peer works on its own piece
+        if self.piece_algorithm == AlgorithmType.RAREST_FIRST:
+            piece_idx = self.piece_manager.select_piece_rarest_first(conn.peer_pieces)
+        else:
+            piece_idx = self.piece_manager.select_piece_random(conn.peer_pieces)
 
-        # If none, select a new MISSING piece
+        # End-game fallback: no MISSING pieces left, help with IN_PROGRESS ones
         if piece_idx is None:
-            if self.piece_algorithm == AlgorithmType.RAREST_FIRST:
-                piece_idx = self.piece_manager.select_piece_rarest_first(conn.peer_pieces)
-            else:
-                piece_idx = self.piece_manager.select_piece_random(conn.peer_pieces)
+            for p in self.piece_manager.pieces:
+                if p.status == PieceStatus.IN_PROGRESS and conn.has_piece(p.index):
+                    if p.get_pending_blocks():
+                        piece_idx = p.index
+                        break
 
         if piece_idx is None:
             return
