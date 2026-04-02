@@ -40,6 +40,7 @@ public class ApiService {
         public double elapsedTime;
         public String pieceAlgorithm;
         public String peerAlgorithm;
+        public String downloadPath;
 
         public static TorrentStatus fromJson(JSONObject json) {
             TorrentStatus status = new TorrentStatus();
@@ -56,6 +57,7 @@ public class ApiService {
             status.elapsedTime = json.optDouble("elapsed_time", 0.0);
             status.pieceAlgorithm = json.optString("piece_algorithm", "");
             status.peerAlgorithm = json.optString("peer_algorithm", "");
+            status.downloadPath = json.optString("download_path", "");
             return status;
         }
 

@@ -650,8 +650,10 @@ class Download:
         self.state = DownloadState.COMPLETED
         self.stats.end_time = time.time()
 
+        download_path = os.path.join(self.download_dir, self.torrent.name)
         self._log(
             f"Download complete! {self.torrent.name} "
+            f"saved to {download_path} "
             f"in {self.stats.elapsed_time:.1f}s "
             f"(avg {self.stats.average_speed / 1024:.1f} KB/s)"
         )
@@ -793,6 +795,7 @@ class Download:
             "elapsed_time": round(self.stats.elapsed_time, 1),
             "piece_algorithm": self.piece_algorithm.value,
             "peer_algorithm": self.peer_algorithm.value,
+            "download_path": os.path.join(self.download_dir, self.torrent.name),
         }
 
 

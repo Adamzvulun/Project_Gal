@@ -28,7 +28,7 @@ public class TorrentClientGUI extends JFrame {
 
     // Table columns
     private static final String[] COLUMN_NAMES = {
-            "Name", "Size", "Progress", "Speed", "Peers", "State", "ID"
+            "Name", "Size", "Progress", "Speed", "Peers", "State", "Location", "ID"
     };
     private static final int COL_NAME = 0;
     private static final int COL_SIZE = 1;
@@ -36,7 +36,8 @@ public class TorrentClientGUI extends JFrame {
     private static final int COL_SPEED = 3;
     private static final int COL_PEERS = 4;
     private static final int COL_STATE = 5;
-    private static final int COL_ID = 6;
+    private static final int COL_LOCATION = 6;
+    private static final int COL_ID = 7;
 
     private final ApiService apiService;
     private final DefaultTableModel tableModel;
@@ -52,6 +53,9 @@ public class TorrentClientGUI extends JFrame {
 
     // Track last log sequence per torrent for incremental polling
     private final Map<String, Integer> logSeqTracker = new HashMap<>();
+
+    // Track previous download states to detect completion transitions
+    private final Map<String, String> previousStates = new HashMap<>();
 
     /**
      * Create the main application window.
@@ -211,6 +215,7 @@ public class TorrentClientGUI extends JFrame {
         downloadTable.getColumnModel().getColumn(COL_SPEED).setPreferredWidth(100);
         downloadTable.getColumnModel().getColumn(COL_PEERS).setPreferredWidth(60);
         downloadTable.getColumnModel().getColumn(COL_STATE).setPreferredWidth(80);
+        downloadTable.getColumnModel().getColumn(COL_LOCATION).setPreferredWidth(200);
         downloadTable.getColumnModel().getColumn(COL_ID).setPreferredWidth(70);
 
         // Progress bar renderer
@@ -338,7 +343,7 @@ public class TorrentClientGUI extends JFrame {
 
                 // Poll logs for each active download
                 for (ApiService.TorrentStatus status : statuses) {
-                    if ("Running".equals(status.state) || "Error".equals(status.state)) {
+                    if ("Running".equals(status.state) || "Error".equals(status.state) || "Completed".equals(status.state)) {
                         int since = logSeqTracker.getOrDefault(status.id, 0);
                         try {
                             JSONArray logs = apiService.getLogs(status.id, since);
@@ -369,6 +374,19 @@ public class TorrentClientGUI extends JFrame {
         int selectedRow = downloadTable.getSelectedRow();
         String selectedId = getSelectedTorrentId();
 
+        // Detect completion transitions and show notification
+        for (ApiService.TorrentStatus status : statuses) {
+            String prevState = previousStates.get(status.id);
+            if ("Completed".equals(status.state) && !"Completed".equals(prevState)) {
+                String msg = status.name + "\nSaved to: " + status.downloadPath;
+                SwingUtilities.invokeLater(() ->
+                    JOptionPane.showMessageDialog(this, msg, "Download Complete",
+                            JOptionPane.INFORMATION_MESSAGE)
+                );
+            }
+            previousStates.put(status.id, status.state);
+        }
+
         tableModel.setRowCount(0);
         for (ApiService.TorrentStatus status : statuses) {
             tableModel.addRow(new Object[]{
@@ -378,6 +396,7 @@ public class TorrentClientGUI extends JFrame {
                     formatSpeed(status.downloadSpeed),
                     String.valueOf(status.connectedPeers),
                     status.state,
+                    status.downloadPath,
                     status.id
             });
         }
