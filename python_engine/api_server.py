@@ -252,10 +252,14 @@ def start_download():
         if algo_data.get('peer_algorithm') == 'round_robin':
             peer_algo = AlgorithmType.ROUND_ROBIN
 
+        # Optional custom download directory
+        download_dir = algo_data.get('download_dir', None)
+
         # Create and start download on the persistent event loop
         async def create_and_start():
             download = await manager.add_torrent(
-                torrent, piece_algo, peer_algo
+                torrent, piece_algo, peer_algo,
+                download_dir=download_dir
             )
             await download.start()
             return download

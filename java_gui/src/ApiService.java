@@ -96,20 +96,22 @@ public class ApiService {
      * @throws ApiException     If the server returns an error.
      */
     public String startDownload(File torrentFile) throws IOException, ApiException {
-        return startDownload(torrentFile, "rarest_first", "tit_for_tat");
+        return startDownload(torrentFile, "rarest_first", "tit_for_tat", null);
     }
 
     /**
-     * Start a new download with specific algorithms.
+     * Start a new download with specific algorithms and download directory.
      *
      * @param torrentFile    The .torrent file.
      * @param pieceAlgorithm Piece selection algorithm ("rarest_first" or "random").
      * @param peerAlgorithm  Peer selection algorithm ("tit_for_tat" or "round_robin").
+     * @param downloadDir    Directory to save the downloaded file (null for server default).
      * @return The torrent ID.
      * @throws IOException  If there is a network or file error.
      * @throws ApiException If the server returns an error.
      */
-    public String startDownload(File torrentFile, String pieceAlgorithm, String peerAlgorithm)
+    public String startDownload(File torrentFile, String pieceAlgorithm, String peerAlgorithm,
+                                String downloadDir)
             throws IOException, ApiException {
         // Build multipart request
         String boundary = "----FormBoundary" + System.currentTimeMillis();
@@ -129,8 +131,16 @@ public class ApiService {
                 pieceAlgorithm +
                 "\r\n--" + boundary + "\r\n" +
                 "Content-Disposition: form-data; name=\"peer_algorithm\"\r\n\r\n" +
-                peerAlgorithm +
-                "\r\n--" + boundary + "--\r\n";
+                peerAlgorithm;
+
+        // Add download directory if specified
+        if (downloadDir != null && !downloadDir.isEmpty()) {
+            algorithmPart += "\r\n--" + boundary + "\r\n" +
+                    "Content-Disposition: form-data; name=\"download_dir\"\r\n\r\n" +
+                    downloadDir;
+        }
+
+        algorithmPart += "\r\n--" + boundary + "--\r\n";
 
         byte[] footerBytes = algorithmPart.getBytes();
 

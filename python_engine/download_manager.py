@@ -816,7 +816,8 @@ class DownloadManager:
 
     async def add_torrent(self, torrent: TorrentMetadata,
                           piece_algorithm: AlgorithmType = AlgorithmType.RAREST_FIRST,
-                          peer_algorithm: AlgorithmType = AlgorithmType.TIT_FOR_TAT
+                          peer_algorithm: AlgorithmType = AlgorithmType.TIT_FOR_TAT,
+                          download_dir: Optional[str] = None
                           ) -> Download:
         """Add a new torrent download.
 
@@ -824,13 +825,16 @@ class DownloadManager:
             torrent: Parsed torrent metadata.
             piece_algorithm: Piece selection algorithm to use.
             peer_algorithm: Peer selection algorithm to use.
+            download_dir: Override download directory (uses manager default if None).
 
         Returns:
             The created Download object.
         """
+        target_dir = download_dir or self.download_dir
+        os.makedirs(target_dir, exist_ok=True)
         download = Download(
             torrent=torrent,
-            download_dir=self.download_dir,
+            download_dir=target_dir,
             state_dir=self.state_dir,
             piece_algorithm=piece_algorithm,
             peer_algorithm=peer_algorithm

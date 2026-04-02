@@ -51,6 +51,10 @@ public class TorrentClientGUI extends JFrame {
     private JButton resumeButton;
     private JButton cancelButton;
 
+    // Algorithm selection combos
+    private JComboBox<String> pieceAlgorithmCombo;
+    private JComboBox<String> peerAlgorithmCombo;
+
     // Track last log sequence per torrent for incremental polling
     private final Map<String, Integer> logSeqTracker = new HashMap<>();
 
@@ -179,16 +183,16 @@ public class TorrentClientGUI extends JFrame {
         // Algorithm selection
         toolbar.addSeparator();
         toolbar.add(new JLabel(" Piece: "));
-        JComboBox<String> pieceAlgoCombo = new JComboBox<>(
+        pieceAlgorithmCombo = new JComboBox<>(
                 new String[]{"Rarest First", "Random"});
-        pieceAlgoCombo.setMaximumSize(new Dimension(120, 30));
-        toolbar.add(pieceAlgoCombo);
+        pieceAlgorithmCombo.setMaximumSize(new Dimension(120, 30));
+        toolbar.add(pieceAlgorithmCombo);
 
         toolbar.add(new JLabel(" Peer: "));
-        JComboBox<String> peerAlgoCombo = new JComboBox<>(
+        peerAlgorithmCombo = new JComboBox<>(
                 new String[]{"Tit-for-Tat", "Round Robin"});
-        peerAlgoCombo.setMaximumSize(new Dimension(120, 30));
-        toolbar.add(peerAlgoCombo);
+        peerAlgorithmCombo.setMaximumSize(new Dimension(120, 30));
+        toolbar.add(peerAlgorithmCombo);
 
         // Enable/disable buttons based on selection
         downloadTable.getSelectionModel().addListSelectionListener(e -> {
@@ -226,23 +230,43 @@ public class TorrentClientGUI extends JFrame {
     // -- Action Handlers --
 
     private void onAddTorrent(ActionEvent e) {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
+        // Step 1: Choose .torrent file
+        JFileChooser torrentChooser = new JFileChooser();
+        torrentChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
                 "Torrent Files (*.torrent)", "torrent"));
-        chooser.setDialogTitle("Select Torrent File");
+        torrentChooser.setDialogTitle("Select Torrent File");
 
-        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File file = chooser.getSelectedFile();
-            addTorrent(file);
+        if (torrentChooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
         }
+        File torrentFile = torrentChooser.getSelectedFile();
+
+        // Step 2: Choose save directory
+        JFileChooser dirChooser = new JFileChooser();
+        dirChooser.setDialogTitle("Choose Download Location");
+        dirChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        dirChooser.setAcceptAllFileFilterUsed(false);
+
+        if (dirChooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        File downloadDir = dirChooser.getSelectedFile();
+
+        addTorrent(torrentFile, downloadDir.getAbsolutePath());
     }
 
-    private void addTorrent(File torrentFile) {
+    private void addTorrent(File torrentFile, String downloadDir) {
         setStatus("Starting download: " + torrentFile.getName());
         new Thread(() -> {
             try {
-                String id = apiService.startDownload(torrentFile);
-                log("Download started: " + torrentFile.getName() + " (ID: " + id + ")");
+                // Get selected algorithms from toolbar combos
+                String pieceAlgo = pieceAlgorithmCombo.getSelectedItem().toString()
+                        .toLowerCase().replace(" ", "_").replace("-", "_");
+                String peerAlgo = peerAlgorithmCombo.getSelectedItem().toString()
+                        .toLowerCase().replace(" ", "_").replace("-", "_");
+
+                String id = apiService.startDownload(torrentFile, pieceAlgo, peerAlgo, downloadDir);
+                log("Download started: " + torrentFile.getName() + " → " + downloadDir + " (ID: " + id + ")");
                 SwingUtilities.invokeLater(this::refreshStatus);
             } catch (Exception ex) {
                 log("ERROR: Failed to start download: " + ex.getMessage());
