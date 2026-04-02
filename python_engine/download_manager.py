@@ -127,6 +127,9 @@ class Download:
         # Round-robin state
         self._rr_index = 0
 
+        # Track which piece each peer is currently working on
+        self._peer_piece: Dict[str, int] = {}  # peer_key -> piece_index
+
         # Live log buffer (last 200 messages for GUI polling)
         self._log_buffer = collections.deque(maxlen=200)
         self._log_counter = 0
@@ -284,6 +287,7 @@ class Download:
         ]
         for key in dead_keys:
             del self._connections[key]
+            self._peer_piece.pop(key, None)
             self.piece_manager.remove_peer(key)
             logger.debug(f"Cleaned up dead peer: {key}")
 
@@ -397,7 +401,12 @@ class Download:
         return False
 
     async def _request_from_peer(self, peer_key: str, conn: PeerConnection):
-        """Assign a piece to a single peer and send block requests."""
+        """Assign a piece to a single peer and send block requests.
+
+        Each peer sticks with its assigned piece until all blocks are
+        requested, then gets a new one. This prevents scattering blocks
+        across hundreds of pieces.
+        """
         if not conn.connected or not conn.am_interested or conn.peer_choking:
             return
         if conn._pending_requests >= MAX_PENDING_REQUESTS:
@@ -405,13 +414,21 @@ class Download:
 
         piece_idx = None
 
-        # Prefer a fresh MISSING piece so each peer works on its own piece
-        if self.piece_algorithm == AlgorithmType.RAREST_FIRST:
-            piece_idx = self.piece_manager.select_piece_rarest_first(conn.peer_pieces)
-        else:
-            piece_idx = self.piece_manager.select_piece_random(conn.peer_pieces)
+        # 1. Continue this peer's current piece if it still has blocks to request
+        current = self._peer_piece.get(peer_key)
+        if current is not None:
+            p = self.piece_manager.pieces[current]
+            if p.status == PieceStatus.IN_PROGRESS and p.get_pending_blocks():
+                piece_idx = current
 
-        # End-game fallback: no MISSING pieces left, help with IN_PROGRESS ones
+        # 2. Current piece done/full — get a new MISSING piece
+        if piece_idx is None:
+            if self.piece_algorithm == AlgorithmType.RAREST_FIRST:
+                piece_idx = self.piece_manager.select_piece_rarest_first(conn.peer_pieces)
+            else:
+                piece_idx = self.piece_manager.select_piece_random(conn.peer_pieces)
+
+        # 3. End-game fallback: help with any IN_PROGRESS piece
         if piece_idx is None:
             for p in self.piece_manager.pieces:
                 if p.status == PieceStatus.IN_PROGRESS and conn.has_piece(p.index):
@@ -421,6 +438,9 @@ class Download:
 
         if piece_idx is None:
             return
+
+        # Track this peer's assignment
+        self._peer_piece[peer_key] = piece_idx
 
         piece = self.piece_manager.pieces[piece_idx]
         if piece.status == PieceStatus.MISSING:
