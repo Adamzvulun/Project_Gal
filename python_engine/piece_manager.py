@@ -32,8 +32,6 @@ class Block:
         self.length = length
         self.data: Optional[bytes] = None
         self.received = False
-        self.requested = False
-        self.requested_time: float = 0
 
     def __repr__(self):
         return f"Block(piece={self.piece_index}, offset={self.offset}, len={self.length})"
@@ -96,27 +94,9 @@ class Piece:
         """Get the complete piece data."""
         return bytes(self._data)
 
-    BLOCK_REQUEST_TIMEOUT = 15  # seconds before a requested block can be re-requested
-
     def get_pending_blocks(self) -> List[Block]:
-        """Get blocks that are available to request.
-
-        Returns blocks that are either never requested, or were requested
-        more than BLOCK_REQUEST_TIMEOUT seconds ago (handles chokes,
-        disconnects, and dropped requests).
-        """
-        now = time.time()
-        result = []
-        for b in self.blocks:
-            if b.received:
-                continue
-            if not b.requested:
-                result.append(b)
-            elif now - b.requested_time > self.BLOCK_REQUEST_TIMEOUT:
-                # Request timed out — make block available again
-                b.requested = False
-                result.append(b)
-        return result
+        """Get blocks that haven't been received yet."""
+        return [b for b in self.blocks if not b.received]
 
     def reset(self):
         """Reset the piece to missing state (e.g., after hash failure)."""
@@ -125,8 +105,6 @@ class Piece:
         for block in self.blocks:
             block.data = None
             block.received = False
-            block.requested = False
-            block.requested_time = 0
 
 
 class PieceManager:

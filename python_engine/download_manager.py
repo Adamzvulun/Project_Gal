@@ -16,7 +16,7 @@ import uuid
 from enum import Enum
 from typing import Callable, Dict, List, Optional, Set
 
-from .peer_connection import PeerConnection, PeerMessage, MessageType, PeerConnectionError, MAX_PENDING_REQUESTS
+from .peer_connection import PeerConnection, PeerMessage, MessageType, PeerConnectionError
 from .piece_manager import PieceManager, PieceStatus, Block
 from .tracker_client import TrackerClient, Peer, TrackerResponse, generate_peer_id
 from .torrent_metadata import TorrentMetadata
@@ -127,9 +127,6 @@ class Download:
         # Round-robin state
         self._rr_index = 0
 
-        # Track which piece each peer is currently working on
-        self._peer_piece: Dict[str, int] = {}  # peer_key -> piece_index
-
         # Live log buffer (last 200 messages for GUI polling)
         self._log_buffer = collections.deque(maxlen=200)
         self._log_counter = 0
@@ -222,12 +219,11 @@ class Download:
                 callback=self._on_tracker_response
             )
 
-            # Connect to peers in background (don't block the request loop)
-            asyncio.create_task(self._connect_to_peers())
+            # Connect to peers and download
+            await self._connect_to_peers()
 
             # Main piece request loop
             last_cleanup = time.time()
-            last_diag = 0
             while not self.piece_manager.is_complete and self.state == DownloadState.RUNNING:
                 # Reset pieces stuck in IN_PROGRESS for too long
                 self.piece_manager.reset_stale_pieces(PIECE_REQUEST_TIMEOUT)
@@ -235,25 +231,8 @@ class Download:
                 await self._request_pieces()
                 await asyncio.sleep(0.1)
 
-                now = time.time()
-
-                # Periodic diagnostic log every 10 seconds
-                if now - last_diag > 10:
-                    connected = sum(1 for c in self._connections.values() if c.connected)
-                    unchoked = sum(1 for c in self._connections.values()
-                                   if c.connected and not c.peer_choking and c.am_interested)
-                    in_progress = sum(1 for p in self.piece_manager.pieces
-                                      if p.status == PieceStatus.IN_PROGRESS)
-                    completed = self.piece_manager.completed_pieces
-                    self._log(
-                        f"Status: peers={connected} unchoked={unchoked} "
-                        f"pieces={completed}/{self.torrent.num_pieces} "
-                        f"in_progress={in_progress} "
-                        f"speed={self.stats.download_speed/1024:.1f}KB/s"
-                    )
-                    last_diag = now
-
                 # Periodically clean up dead peers and try new ones
+                now = time.time()
                 if now - last_cleanup > PEER_CLEANUP_INTERVAL:
                     self._cleanup_dead_peers()
                     await self._connect_to_peers()
@@ -287,7 +266,6 @@ class Download:
         ]
         for key in dead_keys:
             del self._connections[key]
-            self._peer_piece.pop(key, None)
             self.piece_manager.remove_peer(key)
             logger.debug(f"Cleaned up dead peer: {key}")
 
@@ -345,12 +323,9 @@ class Download:
 
         if message.type == MessageType.BITFIELD:
             self.piece_manager.update_peer_pieces(peer_key, conn.peer_pieces)
-            peer_has = sum(1 for p in conn.peer_pieces if p)
-            self._log(f"Peer {peer_key} has {peer_has}/{self.torrent.num_pieces} pieces")
             # Check if peer has pieces we need
             if self._peer_has_needed_pieces(conn):
                 await conn.send_interested()
-                self._log(f"Sent INTERESTED to {peer_key}")
 
         elif message.type == MessageType.HAVE:
             piece_idx = message.piece_index
@@ -359,7 +334,7 @@ class Download:
                 await conn.send_interested()
 
         elif message.type == MessageType.UNCHOKE:
-            self._log(f"Peer {peer_key} UNCHOKED us — can request pieces now")
+            pass  # Can now request pieces from this peer
 
         elif message.type == MessageType.PIECE:
             piece_idx = message.piece_index
@@ -367,10 +342,6 @@ class Download:
             data = message.block_data
 
             if data is not None:
-                # Skip if piece is already completed (late-arriving block from another peer)
-                if self.piece_manager.pieces[piece_idx].status == PieceStatus.COMPLETED:
-                    return
-
                 is_complete = self.piece_manager.submit_block(piece_idx, offset, data)
                 self.stats.bytes_downloaded += len(data)
 
@@ -378,14 +349,12 @@ class Download:
                     if self.piece_manager.verify_piece(piece_idx):
                         self.security.report_successful_piece(peer_key, piece_idx)
                         await self._write_piece(piece_idx)
-                        done = self.piece_manager.completed_pieces
+                        done = sum(1 for p in self.piece_manager.pieces if p.status == PieceStatus.COMPLETED)
                         self._log(f"Piece {piece_idx} verified OK ({done}/{self.torrent.num_pieces})")
                         # Announce to all peers
                         await self._broadcast_have(piece_idx)
                         if self._on_progress:
                             self._on_progress(self)
-                        # Immediately feed this peer new work
-                        await self._request_from_peer(peer_key, conn)
                     else:
                         self._log(f"Piece {piece_idx} HASH FAILED from {peer_key}")
                         self.security.report_hash_failure(peer_key, piece_idx)
@@ -400,83 +369,29 @@ class Download:
                 return True
         return False
 
-    async def _request_from_peer(self, peer_key: str, conn: PeerConnection):
-        """Assign a piece to a single peer and send block requests.
+    async def _request_pieces(self):
+        """Request pieces from unchoked peers."""
+        for peer_key, conn in list(self._connections.items()):
+            if not conn.connected or conn.peer_choking or not conn.am_interested:
+                continue
 
-        Each peer sticks with its assigned piece until all blocks are
-        requested, then gets a new one. This prevents scattering blocks
-        across hundreds of pieces.
-        """
-        if not conn.connected or not conn.am_interested or conn.peer_choking:
-            return
-
-        # Reset stale pending counter: if peer hasn't sent data in 10s,
-        # our requests were likely lost (choke, disconnect, etc.)
-        if conn._pending_requests > 0 and conn._last_piece_received > 0:
-            if time.time() - conn._last_piece_received > 10:
-                conn._pending_requests = 0
-
-        if conn._pending_requests >= MAX_PENDING_REQUESTS:
-            return
-
-        piece_idx = None
-
-        # 1. Continue this peer's current piece if it still has blocks to request
-        current = self._peer_piece.get(peer_key)
-        if current is not None:
-            p = self.piece_manager.pieces[current]
-            if p.status == PieceStatus.IN_PROGRESS:
-                pending = p.get_pending_blocks()
-                if pending:
-                    piece_idx = current
-                elif not p.is_complete:
-                    # All blocks requested but not all received — wait for responses
-                    return
-
-        # 2. Current piece done — get a new MISSING piece
-        if piece_idx is None:
+            # Select piece based on algorithm
             if self.piece_algorithm == AlgorithmType.RAREST_FIRST:
                 piece_idx = self.piece_manager.select_piece_rarest_first(conn.peer_pieces)
             else:
                 piece_idx = self.piece_manager.select_piece_random(conn.peer_pieces)
 
-        # 3. End-game fallback: help with any IN_PROGRESS piece
-        if piece_idx is None:
-            for p in self.piece_manager.pieces:
-                if p.status == PieceStatus.IN_PROGRESS and conn.has_piece(p.index):
-                    if p.get_pending_blocks():
-                        piece_idx = p.index
-                        break
+            if piece_idx is None:
+                continue
 
-        if piece_idx is None:
-            return
-
-        # Track this peer's assignment
-        self._peer_piece[peer_key] = piece_idx
-
-        piece = self.piece_manager.pieces[piece_idx]
-        if piece.status == PieceStatus.MISSING:
-            self.piece_manager.start_piece(piece_idx)
-
-        pending_blocks = piece.get_pending_blocks()
-        for block in pending_blocks:
-            if conn._pending_requests >= MAX_PENDING_REQUESTS:
-                break
-            try:
-                block.requested = True
-                block.requested_time = time.time()
-                await conn.send_request(
-                    block.piece_index, block.offset, block.length
-                )
-            except PeerConnectionError:
-                block.requested = False
-                block.requested_time = 0
-                break
-
-    async def _request_pieces(self):
-        """Request pieces from all unchoked peers."""
-        for peer_key, conn in list(self._connections.items()):
-            await self._request_from_peer(peer_key, conn)
+            blocks = self.piece_manager.start_piece(piece_idx)
+            for block in blocks:
+                try:
+                    await conn.send_request(
+                        block.piece_index, block.offset, block.length
+                    )
+                except PeerConnectionError:
+                    break
 
     async def _choke_loop(self):
         """Periodically run choke/unchoke algorithm."""
@@ -572,17 +487,13 @@ class Download:
                         pass
 
     async def _broadcast_have(self, piece_index: int):
-        """Announce a completed piece to all connected peers (non-blocking)."""
+        """Announce a completed piece to all connected peers."""
         for conn in list(self._connections.values()):
             if conn.connected:
-                asyncio.create_task(self._safe_send_have(conn, piece_index))
-
-    async def _safe_send_have(self, conn: PeerConnection, piece_index: int):
-        """Send a HAVE message, ignoring errors."""
-        try:
-            await conn.send_have(piece_index)
-        except (PeerConnectionError, Exception):
-            pass
+                try:
+                    await conn.send_have(piece_index)
+                except PeerConnectionError:
+                    pass
 
     async def _write_piece(self, piece_index: int):
         """Write a verified piece to the output file(s).
