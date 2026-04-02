@@ -1,6 +1,10 @@
-# Download Stalling Bug — Debug History & Guide for Next Attempt
+# Download Stalling Bug — Debug History (RESOLVED)
 
-## The Problem
+## Status: FIXED
+
+This bug has been resolved. The final fix addressed all root causes simultaneously (see "Successful Fix" section at the end). This document is kept as a record of the debugging process.
+
+## The Problem (was)
 
 When downloading a real torrent (debian-13.4.0-amd64-netinst.iso, 790MB, 3016 pieces, 256KB per piece = 16 blocks of 16KB each), the download starts fast (~10MB/s with 17-22 unchoked peers) but stalls after downloading 7-19% of the file. After stalling, it either downloads one piece at a time or stops completely.
 
@@ -132,13 +136,32 @@ When downloading a real torrent (debian-13.4.0-amd64-netinst.iso, 790MB, 3016 pi
 - `python_engine/peer_connection.py` — `_pending_requests` tracking, `send_request()`, `MAX_PENDING_REQUESTS`
 - `python_engine/piece_manager.py` — `Block` class, `get_pending_blocks()`, `Piece.reset()`
 
-## Suggestions for Next Attempt
+## Successful Fix (Attempt 7)
 
-- Consider removing `_pending_requests` entirely and using a simpler flow-control mechanism
-- Consider running piece verification and disk writes in a thread executor (`loop.run_in_executor`) to avoid blocking the event loop
-- Consider a completely different request strategy: each peer maintains a request queue, blocks are assigned round-robin, timed out blocks are automatically reassigned
-- Look at how libtorrent or other production clients handle request pipelining
-- The `_broadcast_have` should definitely be non-blocking (fire-and-forget tasks)
-- The initial `await _connect_to_peers()` should definitely be non-blocking
-- Maybe increase `MAX_PENDING_REQUESTS` to 50+ (real clients use higher values)
-- Consider whether the 0.1s polling loop is the right model vs event-driven
+The fix addressed ALL root causes simultaneously rather than one at a time:
+
+### Changes in `piece_manager.py`:
+- **Block request tracking**: `Block` now tracks `requested`, `requested_time`, `requested_by` (peer_key)
+- `is_requestable` property: unreceived blocks that are either not requested or timed out (10s)
+- `get_requestable_blocks()`: returns only blocks eligible for (re-)requesting
+- `clear_peer_requests(peer_key)`: frees all blocks when a peer chokes/disconnects
+- `find_in_progress_piece()`: finds IN_PROGRESS pieces with requestable blocks for endgame
+
+### Changes in `peer_connection.py`:
+- `MAX_PENDING_REQUESTS`: 10 → 50
+- `can_request` property: auto-resets stuck `_pending_requests` after 15s with no response
+- `request_capacity` property: how many more requests the peer can accept
+- Tracks `_last_request_time` and `_last_piece_time` for stuck detection
+
+### Changes in `download_manager.py`:
+- **Per-peer piece assignment** (`_peer_piece` dict): each peer works one piece at a time
+- **`_request_from_peer()`**: 3-step strategy — continue current piece → new MISSING piece → endgame fallback
+- **Choke handling**: clears block requests so other peers pick them up immediately
+- **Duplicate guard**: skips PIECE messages for already-completed pieces
+- **Non-blocking connect**: initial `_connect_to_peers()` via `create_task()`
+- **Non-blocking broadcast**: HAVE messages via `asyncio.gather()` in a fire-and-forget task
+- **Thread executor**: hash verification and disk I/O run off the event loop
+- **Immediate pipelining**: new work assigned instantly on UNCHOKE and piece completion
+
+### Why it worked when previous attempts didn't:
+Each prior attempt fixed 1-2 issues but introduced new ones or left other root causes unaddressed. The successful fix addressed all 5 core design issues simultaneously, preventing the cascading failures that occurred when only partial fixes were applied.

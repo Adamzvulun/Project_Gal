@@ -186,19 +186,28 @@ Single TCP connection implementing the Peer Wire Protocol.
   - Stats: `bytes_downloaded`, `bytes_uploaded`, `download_rate`, `_pending_requests`
 - **`PeerMessage`** — Parsed message with properties: `piece_index`, `block_offset`, `block_length`, `block_data`, `bitfield_data`
 - **`MessageType`** — Enum: CHOKE(0), UNCHOKE(1), INTERESTED(2), NOT_INTERESTED(3), HAVE(4), BITFIELD(5), REQUEST(6), PIECE(7), CANCEL(8), KEEP_ALIVE(-1)
-- Constants: `BLOCK_SIZE = 16384` (16KB), `MAX_PENDING_REQUESTS = 10`, `CONNECTION_TIMEOUT = 30`, `REQUEST_TIMEOUT = 60`, `MAX_MESSAGE_SIZE = 2MB`
+- `can_request → bool` — Checks connection, choking state, and auto-resets stuck `_pending_requests` after 15s with no PIECE response
+- `request_capacity → int` — How many more requests we can send (`MAX_PENDING_REQUESTS - _pending_requests`)
+- Constants: `BLOCK_SIZE = 16384` (16KB), `MAX_PENDING_REQUESTS = 50`, `CONNECTION_TIMEOUT = 30`, `REQUEST_TIMEOUT = 60`, `MAX_MESSAGE_SIZE = 2MB`
 
 ### piece_manager.py
 Tracks piece status and implements piece selection.
 - **`Block(piece_index, offset, length)`** — Single 16KB block within a piece
   - `data`, `received` — Set when block arrives
+  - `requested`, `requested_time`, `requested_by` — Track which peer requested this block and when
+  - `is_requestable → bool` — True if not received AND (not requested OR request timed out after 10s)
+  - `mark_requested(peer_key)` — Mark block as requested by a peer
+  - `clear_request()` — Reset request state so block can be re-requested
+  - `BLOCK_REQUEST_TIMEOUT = 10` — Seconds before a requested block can be re-requested
 - **`Piece(index, length, expected_hash)`** — One piece (typically 256KB = 16 blocks)
   - `status: PieceStatus` — MISSING → IN_PROGRESS → COMPLETED
   - `blocks: List[Block]` — Created in constructor based on length
   - `submit_block(offset, data) → bool` — Returns True when all blocks received
   - `verify_hash() → bool` — SHA-1 check against expected hash
   - `get_pending_blocks() → List[Block]` — Blocks where `not b.received`
-  - `reset()` — Back to MISSING, clears all block data
+  - `get_requestable_blocks() → List[Block]` — Blocks that can be requested (not received, not recently requested)
+  - `clear_peer_requests(peer_key)` — Clear request state for all blocks requested by a specific peer
+  - `reset()` — Back to MISSING, clears all block data and request state
 - **`PieceManager(num_pieces, piece_length, total_size, piece_hashes)`**
   - `pieces: List[Piece]` — All piece objects
   - `_peer_frequency: Dict[int, int]` — How many peers have each piece
@@ -210,6 +219,8 @@ Tracks piece status and implements piece selection.
   - `reset_stale_pieces(timeout)` — Resets pieces IN_PROGRESS longer than timeout
   - `submit_block(piece_idx, offset, data) → bool` — Delegates to Piece
   - `verify_piece(piece_idx) → bool` — Hash check, sets COMPLETED or resets
+  - `clear_peer_requests(peer_key)` — Clear block request state across all IN_PROGRESS pieces for a peer (called on choke/disconnect)
+  - `find_in_progress_piece(peer_pieces, exclude) → Optional[int]` — Find an IN_PROGRESS piece with requestable blocks (for endgame)
   - Properties: `completed_pieces`, `bytes_downloaded`, `bytes_remaining`, `progress`, `is_complete`
 
 ### download_manager.py
@@ -222,19 +233,25 @@ Central coordinator for downloads.
   - `security: SecurityManager` — Peer reputation
   - `_connections: Dict[str, PeerConnection]` — Active peer connections
   - `_known_peers: Set[Peer]` — All discovered peers
+  - `_peer_piece: Dict[str, int]` — Per-peer piece assignment (each peer works on one piece at a time)
+  - `_executor: ThreadPoolExecutor(2)` — For hash verification and disk I/O off the event loop
   - `_log_buffer: deque(maxlen=200)` — Ring buffer for GUI log polling
   - `_log_counter: int` — Sequence number for incremental polling
   - Key methods:
     - `start()` — Creates `_download_loop()` task
-    - `_download_loop()` — Main loop: tracker → connect → request loop
-    - `_connect_to_peers()` — Connects to known peers concurrently (gather)
+    - `_download_loop()` — Main loop: tracker → connect (non-blocking) → request loop
+    - `_connect_to_peers()` — Connects to known peers concurrently (gather). Launched via `create_task()` to avoid blocking
     - `_connect_peer(peer)` — TCP connect + handshake + start message loop
-    - `_on_peer_message(conn, message)` — Callback: handles BITFIELD, HAVE, UNCHOKE, PIECE
-    - `_request_pieces()` — Iterates peers, selects piece via algorithm, sends block requests
+    - `_on_peer_message(conn, message)` — Callback: handles BITFIELD, HAVE, UNCHOKE (immediate requests), CHOKE (clears block requests), PIECE (duplicate guard, executor for hash/disk)
+    - `_request_pieces()` — Iterates unchoked peers, delegates to `_request_from_peer()`
+    - `_request_from_peer(peer_key, conn)` — Per-peer request strategy: (1) continue current assigned piece, (2) get new MISSING piece, (3) endgame fallback to IN_PROGRESS with timed-out blocks
+    - `_send_block_requests(conn, peer_key, blocks, max)` — Send block requests up to capacity, marking blocks as requested
     - `_choke_loop()` — Every 10s: Tit-for-Tat or Round-Robin unchoke decisions
     - `_keep_alive_loop()` — Every 60s: sends keep-alive to all peers
-    - `_broadcast_have(piece_idx)` — Tells all peers about completed piece
-    - `_write_piece(piece_idx)` — Writes verified piece data to disk files
+    - `_broadcast_have(piece_idx)` — Concurrent `asyncio.gather()` HAVE to all peers, launched as fire-and-forget `create_task()`
+    - `_write_piece_sync(piece_idx)` — Synchronous disk write (runs in thread executor)
+    - `_write_piece(piece_idx)` — Async wrapper using executor
+    - `_cleanup_dead_peers()` — Removes dead peers, clears their piece assignments and block requests
     - `_complete_download()` — Sets COMPLETED state, announces to tracker
     - `_log(message)` — Adds to ring buffer with sequence number
     - `get_logs(since_seq) → List[dict]` — For GUI polling
@@ -330,13 +347,16 @@ Length=0 → keep-alive. Messages: CHOKE(0), UNCHOKE(1), INTERESTED(2), NOT_INTE
 ### Download Flow
 1. Parse .torrent → get tracker URL, info_hash, piece hashes
 2. Announce to tracker → get peer list (typically 50 peers)
-3. TCP connect to each peer → handshake → exchange bitfields
+3. TCP connect to each peer (non-blocking) → handshake → exchange bitfields
 4. Send INTERESTED to peers that have pieces we need
-5. Wait for UNCHOKE from peer (they allow us to request)
-6. Select piece (rarest-first), send REQUEST for blocks (up to MAX_PENDING_REQUESTS=10)
-7. Receive PIECE messages with block data
-8. When all blocks received → SHA-1 verify → write to disk → broadcast HAVE
-9. Repeat until all pieces complete
+5. Wait for UNCHOKE from peer → immediately request pieces (event-driven)
+6. Each peer is assigned one piece at a time. Blocks are requested up to `MAX_PENDING_REQUESTS=50` with per-block tracking
+7. Receive PIECE messages with block data. Duplicates for completed pieces are silently dropped
+8. When all blocks received → SHA-1 verify (in thread executor) → write to disk (in thread executor) → broadcast HAVE (fire-and-forget task)
+9. On piece completion, peer immediately gets new work assigned
+10. On choke, peer's block requests are cleared so other peers can pick them up
+11. Stuck `_pending_requests` counters auto-reset after 15s with no response
+12. Repeat until all pieces complete
 
 ### Tit-for-Tat Algorithm (every 10 seconds)
 1. Get all interested peers
@@ -347,18 +367,24 @@ Length=0 → keep-alive. Messages: CHOKE(0), UNCHOKE(1), INTERESTED(2), NOT_INTE
 
 ---
 
-## Known Bug: Download Stalls at 15-20%
+## Resolved Bug: Download Stalling at 15-20% (FIXED)
 
-**See `DOWNLOAD_STALLING_DEBUG_GUIDE.md` for full details.**
+**See `DOWNLOAD_STALLING_DEBUG_GUIDE.md` for the full debug history (6 failed attempts before the final fix).**
 
-The download starts fast (~10MB/s, 17+ peers) but stalls after 300-600 pieces (15-20%). Multiple fix attempts were tried and reverted. The code is currently in its original (pre-fix) state.
+The download previously stalled after 300-600 pieces (15-20%). This was fixed with a comprehensive pipeline redesign addressing all root causes simultaneously:
 
-**Root cause summary:** The `_request_pieces()` loop has fundamental issues with:
-1. Not tracking which blocks have been requested (re-sends same blocks)
-2. `_pending_requests` counter getting stuck when peers stop responding
-3. `_broadcast_have()` blocking the event loop (21 sequential awaits)
-4. Initial `await _connect_to_peers()` blocking before any requests
-5. No coordination between peers to prevent all peers working on same piece
+1. **Per-peer piece assignment** — Each peer works on one piece at a time, preventing block scattering and peer convergence
+2. **Block request tracking with timeouts** — Blocks track who requested them and when; re-requestable after 10s timeout
+3. **Choke handling** — When a peer chokes, their block requests are immediately cleared so other peers can pick them up
+4. **Stuck counter recovery** — `_pending_requests` auto-resets after 15s with no PIECE response
+5. **Non-blocking initial connect** — `asyncio.create_task()` instead of blocking await
+6. **Non-blocking broadcast** — HAVE messages via concurrent `asyncio.gather()` in a fire-and-forget task
+7. **Duplicate completion guard** — PIECE messages for already-completed pieces are silently skipped
+8. **Heavy work off event loop** — Hash verification and disk I/O run in a thread pool executor
+9. **Pipeline depth** — `MAX_PENDING_REQUESTS` increased from 10 to 50
+10. **Immediate pipelining** — New work assigned on UNCHOKE and piece completion events
+
+Downloads now complete successfully.
 
 ---
 
@@ -398,4 +424,4 @@ Test files exist for all modules. Tests use pytest and pytest-asyncio.
 
 Development branch: `claude/bitTorrent-file-sharing-system-UcIZc`
 
-The code is currently reverted to the pre-stalling-fix state (commit `60dc871` equivalent). All 7 fix attempts have been reverted. The `DOWNLOAD_STALLING_DEBUG_GUIDE.md` documents what was tried.
+The download stalling bug has been fixed. The `DOWNLOAD_STALLING_DEBUG_GUIDE.md` documents the 6 failed attempts that informed the final successful fix.
