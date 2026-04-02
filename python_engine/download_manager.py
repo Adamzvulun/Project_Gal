@@ -219,8 +219,8 @@ class Download:
                 callback=self._on_tracker_response
             )
 
-            # Connect to peers and download
-            await self._connect_to_peers()
+            # Connect to peers in background (don't block the request loop)
+            asyncio.create_task(self._connect_to_peers())
 
             # Main piece request loop
             last_cleanup = time.time()
@@ -380,6 +380,8 @@ class Download:
                         await self._broadcast_have(piece_idx)
                         if self._on_progress:
                             self._on_progress(self)
+                        # Immediately feed this peer new work
+                        await self._request_from_peer(peer_key, conn)
                     else:
                         self._log(f"Piece {piece_idx} HASH FAILED from {peer_key}")
                         self.security.report_hash_failure(peer_key, piece_idx)
@@ -394,59 +396,55 @@ class Download:
                 return True
         return False
 
-    async def _request_pieces(self):
-        """Request pieces from unchoked peers.
+    async def _request_from_peer(self, peer_key: str, conn: PeerConnection):
+        """Assign a piece to a single peer and send block requests."""
+        if not conn.connected or not conn.am_interested or conn.peer_choking:
+            return
+        if conn._pending_requests >= MAX_PENDING_REQUESTS:
+            return
 
-        Each peer is assigned a different piece where possible to maximize
-        parallelism and avoid multiple peers downloading the same blocks.
-        """
-        # Track which IN_PROGRESS pieces are already claimed by a peer this round
-        claimed_pieces: Dict[int, str] = {}  # piece_idx -> peer_key
+        piece_idx = None
 
-        for peer_key, conn in list(self._connections.items()):
-            if not conn.connected or not conn.am_interested or conn.peer_choking:
-                continue
+        # Try to continue an IN_PROGRESS piece this peer can serve
+        for p in self.piece_manager.pieces:
+            if p.status == PieceStatus.IN_PROGRESS and conn.has_piece(p.index):
+                if p.get_pending_blocks():
+                    piece_idx = p.index
+                    break
+
+        # If none, select a new MISSING piece
+        if piece_idx is None:
+            if self.piece_algorithm == AlgorithmType.RAREST_FIRST:
+                piece_idx = self.piece_manager.select_piece_rarest_first(conn.peer_pieces)
+            else:
+                piece_idx = self.piece_manager.select_piece_random(conn.peer_pieces)
+
+        if piece_idx is None:
+            return
+
+        piece = self.piece_manager.pieces[piece_idx]
+        if piece.status == PieceStatus.MISSING:
+            self.piece_manager.start_piece(piece_idx)
+
+        pending_blocks = piece.get_pending_blocks()
+        for block in pending_blocks:
             if conn._pending_requests >= MAX_PENDING_REQUESTS:
-                continue
+                break
+            try:
+                block.requested = True
+                block.requested_time = time.time()
+                await conn.send_request(
+                    block.piece_index, block.offset, block.length
+                )
+            except PeerConnectionError:
+                block.requested = False
+                block.requested_time = 0
+                break
 
-            piece_idx = None
-
-            # Try to continue an IN_PROGRESS piece not claimed by another peer
-            for p in self.piece_manager.pieces:
-                if p.status == PieceStatus.IN_PROGRESS and conn.has_piece(p.index):
-                    if p.index not in claimed_pieces and p.get_pending_blocks():
-                        piece_idx = p.index
-                        break
-
-            # If no unclaimed in-progress piece, select a new MISSING one
-            if piece_idx is None:
-                if self.piece_algorithm == AlgorithmType.RAREST_FIRST:
-                    piece_idx = self.piece_manager.select_piece_rarest_first(conn.peer_pieces)
-                else:
-                    piece_idx = self.piece_manager.select_piece_random(conn.peer_pieces)
-
-            if piece_idx is None:
-                continue
-
-            # Claim this piece for this peer
-            claimed_pieces[piece_idx] = peer_key
-
-            piece = self.piece_manager.pieces[piece_idx]
-            if piece.status == PieceStatus.MISSING:
-                self.piece_manager.start_piece(piece_idx)
-
-            pending_blocks = piece.get_pending_blocks()
-            for block in pending_blocks:
-                if conn._pending_requests >= MAX_PENDING_REQUESTS:
-                    break
-                try:
-                    block.requested = True
-                    await conn.send_request(
-                        block.piece_index, block.offset, block.length
-                    )
-                except PeerConnectionError:
-                    block.requested = False
-                    break
+    async def _request_pieces(self):
+        """Request pieces from all unchoked peers."""
+        for peer_key, conn in list(self._connections.items()):
+            await self._request_from_peer(peer_key, conn)
 
     async def _choke_loop(self):
         """Periodically run choke/unchoke algorithm."""
