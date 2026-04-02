@@ -409,6 +409,13 @@ class Download:
         """
         if not conn.connected or not conn.am_interested or conn.peer_choking:
             return
+
+        # Reset stale pending counter: if peer hasn't sent data in 10s,
+        # our requests were likely lost (choke, disconnect, etc.)
+        if conn._pending_requests > 0 and conn._last_piece_received > 0:
+            if time.time() - conn._last_piece_received > 10:
+                conn._pending_requests = 0
+
         if conn._pending_requests >= MAX_PENDING_REQUESTS:
             return
 
@@ -418,10 +425,15 @@ class Download:
         current = self._peer_piece.get(peer_key)
         if current is not None:
             p = self.piece_manager.pieces[current]
-            if p.status == PieceStatus.IN_PROGRESS and p.get_pending_blocks():
-                piece_idx = current
+            if p.status == PieceStatus.IN_PROGRESS:
+                pending = p.get_pending_blocks()
+                if pending:
+                    piece_idx = current
+                elif not p.is_complete:
+                    # All blocks requested but not all received — wait for responses
+                    return
 
-        # 2. Current piece done/full — get a new MISSING piece
+        # 2. Current piece done — get a new MISSING piece
         if piece_idx is None:
             if self.piece_algorithm == AlgorithmType.RAREST_FIRST:
                 piece_idx = self.piece_manager.select_piece_rarest_first(conn.peer_pieces)
@@ -560,13 +572,17 @@ class Download:
                         pass
 
     async def _broadcast_have(self, piece_index: int):
-        """Announce a completed piece to all connected peers."""
+        """Announce a completed piece to all connected peers (non-blocking)."""
         for conn in list(self._connections.values()):
             if conn.connected:
-                try:
-                    await conn.send_have(piece_index)
-                except PeerConnectionError:
-                    pass
+                asyncio.create_task(self._safe_send_have(conn, piece_index))
+
+    async def _safe_send_have(self, conn: PeerConnection, piece_index: int):
+        """Send a HAVE message, ignoring errors."""
+        try:
+            await conn.send_have(piece_index)
+        except (PeerConnectionError, Exception):
+            pass
 
     async def _write_piece(self, piece_index: int):
         """Write a verified piece to the output file(s).

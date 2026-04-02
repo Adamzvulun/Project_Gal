@@ -152,6 +152,7 @@ class PeerConnection:
         self._download_samples = []  # (timestamp, bytes) for rate calculation
         self._last_activity = 0
         self._pending_requests = 0
+        self._last_piece_received = 0  # last time we got a PIECE response
 
     @property
     def connected(self) -> bool:
@@ -322,6 +323,7 @@ class PeerConnection:
             self.bytes_downloaded += data_len
             self._pending_requests = max(0, self._pending_requests - 1)
             now = time.time()
+            self._last_piece_received = now
             self._download_samples.append((now, data_len))
             # Keep only last 30 seconds of samples
             self._download_samples = [
@@ -425,8 +427,6 @@ class PeerConnection:
         """
         if self.peer_choking:
             raise PeerConnectionError("Cannot request: peer is choking us")
-        if self._pending_requests >= MAX_PENDING_REQUESTS:
-            raise PeerConnectionError("Too many pending requests")
 
         payload = struct.pack('!III', piece_index, begin, length)
         await self.send_message(MessageType.REQUEST, payload)
