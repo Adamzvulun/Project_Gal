@@ -50,9 +50,9 @@ Project_Gal/
 │       └── json.jar            # org.json library for JSON parsing
 │
 └── data/                       # Runtime data (created at launch)
-    ├── downloads/              # Where downloaded files are saved
     ├── state/                  # Download state JSON files (for resume)
     └── history.db              # SQLite database for download history
+# Note: downloads are saved to a user-chosen directory (selected via GUI folder picker)
 ```
 
 ---
@@ -90,20 +90,23 @@ python -m python_engine path/to/file.torrent --output ./downloads
 ```
 User clicks "Add Torrent" in GUI
     ↓
-TorrentClientGUI.java → HTTP POST /torrents (multipart with .torrent file)
+TorrentClientGUI.java → file chooser for .torrent → folder chooser for save location
     ↓
-api_server.py → TorrentMetadata(torrent_data=...) → DownloadManager.add_torrent()
+HTTP POST /torrents (multipart with .torrent file + download_dir + algorithms)
+    ↓
+api_server.py → TorrentMetadata(torrent_data=...) → DownloadManager.add_torrent(download_dir=...)
     ↓
 Download.start() → creates asyncio Task for _download_loop()
     ↓
 _download_loop():
   1. TrackerClient.announce(event='started') → gets peer list from tracker
-  2. _connect_to_peers() → TCP connect + handshake to each peer
+  2. _connect_to_peers() → TCP connect + handshake to each peer (non-blocking)
   3. Main loop (every 0.1s):
      - reset_stale_pieces(30s timeout)
-     - _request_pieces() → send REQUEST messages to unchoked peers
+     - _request_pieces() → per-peer piece assignment, send REQUEST messages
      - _update_speed()
      - Periodic: _cleanup_dead_peers(), reconnect
+  4. On completion → _complete_download() → log with save path → popup in GUI
 ```
 
 ### Threading Model
@@ -252,14 +255,14 @@ Central coordinator for downloads.
     - `_write_piece_sync(piece_idx)` — Synchronous disk write (runs in thread executor)
     - `_write_piece(piece_idx)` — Async wrapper using executor
     - `_cleanup_dead_peers()` — Removes dead peers, clears their piece assignments and block requests
-    - `_complete_download()` — Sets COMPLETED state, announces to tracker
+    - `_complete_download()` — Sets COMPLETED state, logs save path, announces to tracker
     - `_log(message)` — Adds to ring buffer with sequence number
     - `get_logs(since_seq) → List[dict]` — For GUI polling
     - `pause()`, `resume()`, `cancel()` — State management
-    - `get_status() → dict` — JSON-serializable status
+    - `get_status() → dict` — JSON-serializable status (includes `download_path`)
 - **`DownloadManager(download_dir, state_dir)`**
   - `downloads: Dict[str, Download]` — All downloads by ID
-  - `add_torrent(torrent, piece_algo, peer_algo) → Download`
+  - `add_torrent(torrent, piece_algo, peer_algo, download_dir=None) → Download`
   - `start/pause/resume/cancel_download(id)`
   - `get_all_status() → List[dict]`, `get_download(id) → Download`
 - **`AlgorithmType`** — RAREST_FIRST, RANDOM, TIT_FOR_TAT, ROUND_ROBIN
@@ -284,7 +287,7 @@ Flask REST API bridging Python engine and Java GUI.
 - `_run_async(coro, timeout=60)` — Submits coroutines to the background loop from Flask threads
 - SQLite database at `data/history.db` with tables: torrents, performance_stats, algorithm_stats, events
 - **Endpoints:**
-  - `POST /torrents` — Start download (multipart .torrent upload or JSON path)
+  - `POST /torrents` — Start download (multipart .torrent upload or JSON path; optional `download_dir` field for custom save location)
   - `GET /torrents` — All download statuses
   - `GET /torrents/<id>` — Single download status
   - `POST /torrents/<id>/pause` — Pause download
@@ -304,23 +307,25 @@ Command-line torrent downloader with progress display.
 
 ### TorrentClientGUI.java
 Java Swing main window.
-- Downloads table with columns: Name, Size, Progress (bar renderer), Speed, Peers, State, ID
-- Toolbar: Add Torrent (file chooser), Pause, Resume, Cancel, History, Piece/Peer algorithm dropdowns
+- Downloads table with columns: Name, Size, Progress (bar renderer), Speed, Peers, State, Location, ID
+- Toolbar: Add Torrent (file + folder chooser), Pause, Resume, Cancel, History, Piece/Peer algorithm dropdowns
 - Event log text area at bottom (split pane)
 - `ScheduledExecutorService` polls status every 2 seconds
-- Polls `/torrents/<id>/logs?since=N` for incremental engine log messages
+- Polls `/torrents/<id>/logs?since=N` for incremental engine log messages (including "Completed" state)
 - `logSeqTracker: Map<String, Integer>` tracks last seen sequence per torrent
+- `previousStates: Map<String, String>` detects completion transitions → shows popup with file name and save path
 - Hebrew title: "מערכת שיתוף קבצים מבוזרת בסגנון BitTorrent"
+- **Add Torrent flow**: (1) file chooser for .torrent file, (2) folder chooser for download location, (3) starts download with chosen algorithms and directory
 
 ### ApiService.java
 HTTP client using java.net.http.HttpClient.
-- `startDownload(File) → String` — Multipart POST with .torrent file, returns torrent ID
+- `startDownload(File, pieceAlgo, peerAlgo, downloadDir) → String` — Multipart POST with .torrent file + algorithms + download directory, returns torrent ID
 - `getStatus() → List<TorrentStatus>` — All downloads
 - `pause/resume/cancel(id)` — Control actions
 - `getHistory() → String` — JSON history
 - `getLogs(id, sinceSeq) → JSONArray` — Incremental log polling
 - `isServerAvailable() → boolean` — Health check
-- `TorrentStatus` — Inner class with all status fields, `fromJson()` factory
+- `TorrentStatus` — Inner class with all status fields including `downloadPath`, `fromJson()` factory
 
 ---
 
@@ -424,4 +429,9 @@ Test files exist for all modules. Tests use pytest and pytest-asyncio.
 
 Development branch: `claude/bitTorrent-file-sharing-system-UcIZc`
 
-The download stalling bug has been fixed. The `DOWNLOAD_STALLING_DEBUG_GUIDE.md` documents the 6 failed attempts that informed the final successful fix.
+## Recent Changes (latest session)
+
+1. **Download stalling bug FIXED** — Comprehensive pipeline redesign (see debug guide for 6 failed attempts that informed the fix)
+2. **Download completion status** — GUI now shows "Completed" state, logs include save path, popup notification on completion
+3. **Download directory chooser** — User picks save folder via GUI dialog when adding a torrent (passed through API → engine)
+4. **Location column** — Downloads table shows the save path for each download
