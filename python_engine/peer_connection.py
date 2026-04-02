@@ -22,7 +22,7 @@ BLOCK_SIZE = 16384  # 16 KB - standard block size
 MAX_MESSAGE_SIZE = 2 * 1024 * 1024  # 2 MB max message size
 CONNECTION_TIMEOUT = 30  # seconds
 REQUEST_TIMEOUT = 60  # seconds
-MAX_PENDING_REQUESTS = 10
+MAX_PENDING_REQUESTS = 50
 
 
 class MessageType(IntEnum):
@@ -152,6 +152,8 @@ class PeerConnection:
         self._download_samples = []  # (timestamp, bytes) for rate calculation
         self._last_activity = 0
         self._pending_requests = 0
+        self._last_request_time: float = 0
+        self._last_piece_time: float = 0  # last time we received a PIECE response
 
     @property
     def connected(self) -> bool:
@@ -321,6 +323,7 @@ class PeerConnection:
             data_len = len(message.block_data) if message.block_data else 0
             self.bytes_downloaded += data_len
             self._pending_requests = max(0, self._pending_requests - 1)
+            self._last_piece_time = time.time()
             now = time.time()
             self._download_samples.append((now, data_len))
             # Keep only last 30 seconds of samples
@@ -422,6 +425,9 @@ class PeerConnection:
             piece_index: Index of the piece.
             begin: Byte offset within the piece.
             length: Number of bytes to request.
+
+        Raises:
+            PeerConnectionError: If peer is choking or too many pending requests.
         """
         if self.peer_choking:
             raise PeerConnectionError("Cannot request: peer is choking us")
@@ -431,6 +437,7 @@ class PeerConnection:
         payload = struct.pack('!III', piece_index, begin, length)
         await self.send_message(MessageType.REQUEST, payload)
         self._pending_requests += 1
+        self._last_request_time = time.time()
 
     async def send_piece(self, piece_index: int, begin: int, data: bytes):
         """Send PIECE message with block data.
@@ -473,6 +480,28 @@ class PeerConnection:
                 pass
 
         logger.info(f"Disconnected from {self.ip}:{self.port}")
+
+    @property
+    def can_request(self) -> bool:
+        """Check if we can send more requests to this peer."""
+        if not self._connected or self.peer_choking:
+            return False
+        if self._pending_requests >= MAX_PENDING_REQUESTS:
+            # If we have pending requests but haven't received a response in 15s,
+            # the counter is likely stuck — reset it
+            if self._last_request_time > 0 and self._pending_requests > 0:
+                time_since_last_piece = time.time() - max(self._last_piece_time, self._last_request_time)
+                if time_since_last_piece > 15:
+                    logger.debug(f"Resetting stuck _pending_requests for {self.ip}:{self.port}")
+                    self._pending_requests = 0
+                    return True
+            return False
+        return True
+
+    @property
+    def request_capacity(self) -> int:
+        """How many more requests we can send to this peer."""
+        return max(0, MAX_PENDING_REQUESTS - self._pending_requests)
 
     def has_piece(self, piece_index: int) -> bool:
         """Check if the peer has a specific piece."""
