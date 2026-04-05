@@ -385,6 +385,22 @@ def get_history():
     return jsonify(rows)
 
 
+@app.route('/history', methods=['DELETE'])
+def clear_history():
+    """Clear all download history from SQLite."""
+    with _db_lock:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM algorithm_stats")
+        cursor.execute("DELETE FROM performance_stats")
+        cursor.execute("DELETE FROM events")
+        cursor.execute("DELETE FROM torrents")
+        conn.commit()
+        conn.close()
+    logger.info("Download history cleared")
+    return jsonify({"status": "ok"})
+
+
 @app.route('/events', methods=['GET'])
 def get_events():
     """Get event log from SQLite."""

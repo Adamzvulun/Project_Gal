@@ -280,6 +280,21 @@ public class ApiService {
     }
 
     /**
+     * Clear all download history from the server database.
+     *
+     * @throws IOException  If there is a network error.
+     * @throws ApiException If the server returns an error.
+     */
+    public void clearHistory() throws IOException, ApiException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/history"))
+                .DELETE()
+                .build();
+        HttpResponse<String> response = sendRequest(request);
+        checkResponse(response, 200);
+    }
+
+    /**
      * Get per-piece algorithm statistics for a specific torrent.
      *
      * @param torrentId The torrent ID.

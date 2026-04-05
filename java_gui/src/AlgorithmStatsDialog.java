@@ -89,11 +89,35 @@ public class AlgorithmStatsDialog extends JDialog {
         JPanel panel = new JPanel(new BorderLayout(6, 6));
         panel.setBorder(new EmptyBorder(8, 8, 8, 8));
 
-        // Refresh button at top
+        // Top row: Refresh + Clear History
         JPanel topRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         JButton refreshBtn = new JButton("Refresh");
         refreshBtn.addActionListener(e -> loadData());
         topRow.add(refreshBtn);
+        JButton clearBtn = new JButton("Clear History");
+        clearBtn.addActionListener(e -> {
+            int choice = JOptionPane.showConfirmDialog(this,
+                    "Clear all download history?", "Confirm",
+                    JOptionPane.YES_NO_OPTION);
+            if (choice == JOptionPane.YES_OPTION) {
+                new Thread(() -> {
+                    try {
+                        apiService.clearHistory();
+                        SwingUtilities.invokeLater(() -> {
+                            compTableModel.setRowCount(0);
+                            torrentEntries.clear();
+                            torrentPicker.removeAllItems();
+                            barChartPanel.setData(null, null);
+                            summaryLabel.setText("History cleared.");
+                        });
+                    } catch (Exception ex) {
+                        SwingUtilities.invokeLater(() ->
+                                summaryLabel.setText("Error clearing history: " + ex.getMessage()));
+                    }
+                }).start();
+            }
+        });
+        topRow.add(clearBtn);
         panel.add(topRow, BorderLayout.NORTH);
 
         String[] cols = {"Name", "Piece Algo", "Peer Algo",
@@ -267,8 +291,8 @@ public class AlgorithmStatsDialog extends JDialog {
         private static final int MARGIN_TOP    = 30;
         private static final int MARGIN_BOTTOM = 40;
         private static final int Y_TICKS       = 5;
-        private static final int MAX_BARS      = 80;   // max bars to draw
-        private static final int MIN_BAR_WIDTH = 4;    // minimum pixels per bar
+        private static final int MAX_BARS      = 40;   // max bars to draw
+        private static final int MIN_BAR_WIDTH = 8;    // minimum pixels per bar
         private static final Color BAR_COLOR   = new Color(70, 130, 180);   // steel blue
         private static final Color GRID_COLOR  = new Color(210, 210, 210);
 
@@ -380,14 +404,16 @@ public class AlgorithmStatsDialog extends JDialog {
                 g2.drawString(label, MARGIN_LEFT - fm.stringWidth(label) - 4, yPx + fm.getAscent() / 2);
             }
 
-            // Draw bars
-            int barW = Math.max(1, chartW / n - 1);
-            int gap  = Math.max(0, (chartW - barW * n) / (n + 1));
+            // Draw bars — guarantee at least 2px gap between bars
+            int gap  = Math.max(2, chartW / (n * 5));
+            int barW = Math.max(4, (chartW - gap * (n + 1)) / n);
+            int totalUsed = barW * n + gap * (n + 1);
+            int offsetX = (chartW - totalUsed) / 2;  // centre bars
             for (int i = 0; i < n; i++) {
                 int val  = bucketData.get(i);
                 if (val <= 0) continue;
-                int barH = (int) ((double) chartH * val / maxVal);
-                int x    = MARGIN_LEFT + gap + i * (barW + gap);
+                int barH = Math.max(1, (int) ((double) chartH * val / maxVal));
+                int x    = MARGIN_LEFT + offsetX + gap + i * (barW + gap);
                 int y    = MARGIN_TOP + chartH - barH;
                 g2.setColor(BAR_COLOR);
                 g2.fillRect(x, y, barW, barH);
@@ -405,16 +431,20 @@ public class AlgorithmStatsDialog extends JDialog {
             g2.setFont(g2.getFont().deriveFont(Font.PLAIN, 9f));
             fm = g2.getFontMetrics();
             int tickCount = Math.min(n, 10);
+            int prevLabelEnd = -1; // avoid overlap
             for (int t = 0; t < tickCount; t++) {
-                int idx = (int) Math.round((double) (n - 1) * t / (tickCount - 1));
+                int idx = (int) Math.round((double) (n - 1) * t / Math.max(1, tickCount - 1));
                 if (idx < 0 || idx >= n) continue;
-                int xPx = MARGIN_LEFT + gap + idx * (barW + gap) + barW / 2;
+                int xPx = MARGIN_LEFT + offsetX + gap + idx * (barW + gap) + barW / 2;
                 String lbl = bucketLabels.get(idx);
                 int lblW = fm.stringWidth(lbl);
-                // Only draw if it fits
-                if (xPx - lblW / 2 >= MARGIN_LEFT && xPx + lblW / 2 <= W - MARGIN_RIGHT) {
+                int lblX = xPx - lblW / 2;
+                // Only draw if it fits and doesn't overlap previous label
+                if (lblX >= MARGIN_LEFT && lblX > prevLabelEnd + 4
+                        && xPx + lblW / 2 <= W - MARGIN_RIGHT) {
                     g2.setColor(Color.DARK_GRAY);
-                    g2.drawString(lbl, xPx - lblW / 2, MARGIN_TOP + chartH + fm.getAscent() + 4);
+                    g2.drawString(lbl, lblX, MARGIN_TOP + chartH + fm.getAscent() + 4);
+                    prevLabelEnd = lblX + lblW;
                 }
             }
 
