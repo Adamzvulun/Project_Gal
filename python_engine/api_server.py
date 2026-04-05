@@ -149,6 +149,11 @@ def init_database():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+    try:
+        cursor.execute("ALTER TABLE performance_stats ADD COLUMN choke_cycles INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     conn.commit()
     conn.close()
     logger.info("Database initialized")
@@ -185,13 +190,14 @@ def save_torrent_to_db(download):
 
         cursor.execute("""
             INSERT OR REPLACE INTO performance_stats
-                (torrent_id, avg_speed, peak_speed, avg_peers)
-            VALUES (?, ?, ?, ?)
+                (torrent_id, avg_speed, peak_speed, avg_peers, choke_cycles)
+            VALUES (?, ?, ?, ?, ?)
         """, (
             download.id,
             stats.average_speed,
             stats.peak_speed,
-            stats.connected_peers
+            stats.connected_peers,
+            stats.choke_cycles
         ))
 
         # Save algorithm stats
@@ -451,10 +457,9 @@ def get_stats_summary():
         SELECT t.id, t.name, t.piece_algorithm, t.peer_algorithm,
                t.total_time_seconds, t.size, t.final_status,
                p.avg_speed, p.peak_speed, p.avg_peers,
+               COALESCE(p.choke_cycles, 0) AS choke_cycles,
                (SELECT COUNT(*)   FROM algorithm_stats a WHERE a.torrent_id = t.id)          AS piece_count,
-               (SELECT SUM(a.selected_as_rarest) FROM algorithm_stats a WHERE a.torrent_id = t.id) AS total_rarest_selections,
-               (SELECT MAX(a.choke_count)   FROM algorithm_stats a WHERE a.torrent_id = t.id) AS choke_count,
-               (SELECT MAX(a.unchoke_count) FROM algorithm_stats a WHERE a.torrent_id = t.id) AS unchoke_count
+               (SELECT SUM(a.selected_as_rarest) FROM algorithm_stats a WHERE a.torrent_id = t.id) AS total_rarest_selections
         FROM torrents t
         LEFT JOIN performance_stats p ON t.id = p.torrent_id
         ORDER BY t.started_at DESC

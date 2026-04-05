@@ -121,8 +121,8 @@ public class AlgorithmStatsDialog extends JDialog {
         panel.add(topRow, BorderLayout.NORTH);
 
         String[] cols = {"Name", "Piece Algo", "Peer Algo",
-                "Avg Speed", "Peak Speed", "Time (sec)",
-                "Choke", "Unchoke", "Status"};
+                "Avg Speed", "Peak Speed", "Time",
+                "Peer Algo Cycles", "Status"};
         compTableModel = new DefaultTableModel(cols, 0) {
             @Override public boolean isCellEditable(int r, int c) { return false; }
         };
@@ -160,17 +160,16 @@ public class AlgorithmStatsDialog extends JDialog {
             String name   = row.optString("name", "Unknown");
             String pAlgo  = friendlyAlgo(row.optString("piece_algorithm", "rarest_first"));
             String eAlgo  = friendlyAlgo(row.optString("peer_algorithm",  "tit_for_tat"));
-            double avgSpd = row.optDouble("avg_speed",  0);
-            double pkSpd  = row.optDouble("peak_speed", 0);
-            int    time   = row.optInt("total_time_seconds", 0);
-            int    choke  = row.optInt("choke_count",   0);
-            int    unchoke= row.optInt("unchoke_count", 0);
-            String status = row.optString("final_status", "-");
+            double avgSpd  = row.optDouble("avg_speed",    0);
+            double pkSpd   = row.optDouble("peak_speed",   0);
+            int    time    = row.optInt("total_time_seconds", 0);
+            int    cycles  = row.optInt("choke_cycles",   0);
+            String status  = row.optString("final_status", "-");
 
             compTableModel.addRow(new Object[]{
                     name, pAlgo, eAlgo,
                     formatSpeed(avgSpd), formatSpeed(pkSpd),
-                    time, choke, unchoke, status
+                    formatDuration(time), cycles, status
             });
 
             torrentEntries.add(new TorrentEntry(id, name));
@@ -256,6 +255,12 @@ public class AlgorithmStatsDialog extends JDialog {
             case "round_robin":  return "Round-Robin";
             default:             return raw;
         }
+    }
+
+    private static String formatDuration(int seconds) {
+        if (seconds <= 0) return "—";
+        if (seconds < 60) return seconds + "s";
+        return String.format("%dm %ds", seconds / 60, seconds % 60);
     }
 
     private static String formatSpeed(double bytesPerSec) {
