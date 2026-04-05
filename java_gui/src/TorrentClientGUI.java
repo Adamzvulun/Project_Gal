@@ -181,7 +181,7 @@ public class TorrentClientGUI extends JFrame {
         toolbar.add(historyButton);
 
         // Statistics button
-        JButton statsButton = new JButton("סטטיסטיקות");
+        JButton statsButton = new JButton("Statistics");
         statsButton.setToolTipText("Algorithm statistics visualization");
         statsButton.addActionListener(this::onShowStats);
         toolbar.add(statsButton);

@@ -30,7 +30,7 @@ public class AlgorithmStatsDialog extends JDialog {
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public AlgorithmStatsDialog(Frame owner, ApiService apiService) {
-        super(owner, "סטטיסטיקות אלגוריתמים", false);
+        super(owner, "Algorithm Statistics", false);
         this.apiService = apiService;
 
         setSize(800, 560);
@@ -39,13 +39,13 @@ public class AlgorithmStatsDialog extends JDialog {
         setLayout(new BorderLayout());
 
         JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("בחירת חלקים (Rarest-First)", buildPieceTab());
-        tabs.addTab("השוואת ביצועים", buildComparisonTab());
+        tabs.addTab("Piece Selection (Rarest-First)", buildPieceTab());
+        tabs.addTab("Performance Comparison", buildComparisonTab());
         add(tabs, BorderLayout.CENTER);
 
         // Close button at bottom
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton closeBtn = new JButton("סגור");
+        JButton closeBtn = new JButton("Close");
         closeBtn.addActionListener((ActionEvent e) -> dispose());
         bottom.add(closeBtn);
         add(bottom, BorderLayout.SOUTH);
@@ -68,7 +68,7 @@ public class AlgorithmStatsDialog extends JDialog {
         torrentPicker.addActionListener(e -> onTorrentSelected());
         pickerRow.add(torrentPicker);
 
-        JButton refreshBtn = new JButton("רענן");
+        JButton refreshBtn = new JButton("Refresh");
         refreshBtn.addActionListener(e -> loadData());
         pickerRow.add(refreshBtn);
         panel.add(pickerRow, BorderLayout.NORTH);
@@ -91,9 +91,9 @@ public class AlgorithmStatsDialog extends JDialog {
         JPanel panel = new JPanel(new BorderLayout(6, 6));
         panel.setBorder(new EmptyBorder(8, 8, 8, 8));
 
-        String[] cols = {"שם", "Piece Algo", "Peer Algo",
-                "מהירות ממוצעת", "מהירות שיא", "זמן (שניות)",
-                "Choke", "Unchoke", "סטטוס"};
+        String[] cols = {"Name", "Piece Algo", "Peer Algo",
+                "Avg Speed", "Peak Speed", "Time (sec)",
+                "Choke", "Unchoke", "Status"};
         compTableModel = new DefaultTableModel(cols, 0) {
             @Override public boolean isCellEditable(int r, int c) { return false; }
         };
@@ -114,7 +114,7 @@ public class AlgorithmStatsDialog extends JDialog {
                 SwingUtilities.invokeLater(() -> populateSummary(summary));
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() ->
-                        summaryLabel.setText("שגיאה בטעינת נתונים: " + ex.getMessage()));
+                        summaryLabel.setText("Error loading data: " + ex.getMessage()));
             }
         }).start();
     }
@@ -155,7 +155,7 @@ public class AlgorithmStatsDialog extends JDialog {
 
         if (torrentPicker.getItemCount() == 0) {
             barChartPanel.setData(null, null);
-            summaryLabel.setText("אין הורדות שהושלמו עדיין.");
+            summaryLabel.setText("No completed downloads yet.");
         } else if (torrentPicker.getSelectedIndex() < 0) {
             torrentPicker.setSelectedIndex(0);
         } else {
@@ -173,7 +173,7 @@ public class AlgorithmStatsDialog extends JDialog {
                 SwingUtilities.invokeLater(() -> displayPieceChart(entry.name, pieceStats));
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() ->
-                        summaryLabel.setText("שגיאה: " + ex.getMessage()));
+                        summaryLabel.setText("Error: " + ex.getMessage()));
             }
         }).start();
     }
@@ -181,7 +181,7 @@ public class AlgorithmStatsDialog extends JDialog {
     private void displayPieceChart(String torrentName, JSONArray pieceStats) {
         if (pieceStats.length() == 0) {
             barChartPanel.setData(null, torrentName);
-            summaryLabel.setText(torrentName + " — אין נתוני Rarest-First (יתכן שהאלגוריתם Random שימש)");
+            summaryLabel.setText(torrentName + " — No Rarest-First data (Random algorithm may have been used)");
             return;
         }
 
@@ -211,7 +211,7 @@ public class AlgorithmStatsDialog extends JDialog {
         int totalPieces = maxIdx + 1;
         double avg = totalPieces > 0 ? (double) totalSelections / totalPieces : 0;
         summaryLabel.setText(String.format(
-                "%s  |  חלקים: %d  |  סה\"כ בחירות Rarest-First: %d  |  ממוצע: %.2f",
+                "%s  |  Pieces: %d  |  Total Rarest-First selections: %d  |  Avg: %.2f",
                 torrentName, totalPieces, totalSelections, avg));
 
         barChartPanel.setData(counts, torrentName);
@@ -307,7 +307,7 @@ public class AlgorithmStatsDialog extends JDialog {
             if (data == null || data.isEmpty()) {
                 g2.setColor(Color.GRAY);
                 g2.setFont(g2.getFont().deriveFont(Font.PLAIN, 13f));
-                String msg = "אין נתונים להצגה";
+                String msg = "No data to display";
                 FontMetrics fm = g2.getFontMetrics();
                 g2.drawString(msg, (W - fm.stringWidth(msg)) / 2, H / 2);
                 return;
@@ -353,7 +353,7 @@ public class AlgorithmStatsDialog extends JDialog {
             g2.drawLine(MARGIN_LEFT, MARGIN_TOP + chartH, MARGIN_LEFT + chartW, MARGIN_TOP + chartH); // X
 
             // X-axis label
-            String xLabel = "מספר חלק (Piece Index)";
+            String xLabel = "Piece Index";
             g2.setFont(g2.getFont().deriveFont(Font.PLAIN, 11f));
             fm = g2.getFontMetrics();
             g2.drawString(xLabel, MARGIN_LEFT + (chartW - fm.stringWidth(xLabel)) / 2,
