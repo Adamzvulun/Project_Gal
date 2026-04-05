@@ -73,11 +73,9 @@ public class AlgorithmStatsDialog extends JDialog {
         pickerRow.add(refreshBtn);
         panel.add(pickerRow, BorderLayout.NORTH);
 
-        // Centre: custom bar chart
+        // Centre: custom bar chart — always fits within window width
         barChartPanel = new BarChartPanel();
-        panel.add(new JScrollPane(barChartPanel,
-                JScrollPane.VERTICAL_SCROLLBAR_NEVER,
-                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED), BorderLayout.CENTER);
+        panel.add(barChartPanel, BorderLayout.CENTER);
 
         // South: summary text
         summaryLabel = new JLabel(" ");
@@ -90,6 +88,13 @@ public class AlgorithmStatsDialog extends JDialog {
     private JPanel buildComparisonTab() {
         JPanel panel = new JPanel(new BorderLayout(6, 6));
         panel.setBorder(new EmptyBorder(8, 8, 8, 8));
+
+        // Refresh button at top
+        JPanel topRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        JButton refreshBtn = new JButton("Refresh");
+        refreshBtn.addActionListener(e -> loadData());
+        topRow.add(refreshBtn);
+        panel.add(topRow, BorderLayout.NORTH);
 
         String[] cols = {"Name", "Piece Algo", "Peer Algo",
                 "Avg Speed", "Peak Speed", "Time (sec)",
@@ -185,8 +190,7 @@ public class AlgorithmStatsDialog extends JDialog {
             return;
         }
 
-        // Build sorted piece-index → selection-count list
-        // pieceStats is already ordered by piece_index
+        // Build sorted piece-index -> selection-count list
         int maxIdx = 0;
         for (int i = 0; i < pieceStats.length(); i++) {
             maxIdx = Math.max(maxIdx, pieceStats.getJSONObject(i).optInt("piece_index", 0));
@@ -253,7 +257,8 @@ public class AlgorithmStatsDialog extends JDialog {
 
     /**
      * Custom panel that draws a vertical bar chart using Java2D.
-     * No external charting library is required.
+     * Automatically aggregates pieces into buckets when there are too many
+     * to display individually, so the chart always fits the window width.
      */
     static class BarChartPanel extends JPanel {
 
@@ -262,27 +267,60 @@ public class AlgorithmStatsDialog extends JDialog {
         private static final int MARGIN_TOP    = 30;
         private static final int MARGIN_BOTTOM = 40;
         private static final int Y_TICKS       = 5;
+        private static final int MAX_BARS      = 80;   // max bars to draw
+        private static final int MIN_BAR_WIDTH = 4;    // minimum pixels per bar
         private static final Color BAR_COLOR   = new Color(70, 130, 180);   // steel blue
         private static final Color GRID_COLOR  = new Color(210, 210, 210);
 
-        private List<Integer> data;    // one entry per piece index
+        private List<Integer> rawData;      // one entry per piece index
+        private List<Integer> bucketData;   // aggregated bucket sums
+        private List<String>  bucketLabels; // label for each bucket
         private String title;
 
         BarChartPanel() {
             setBackground(Color.WHITE);
-            setPreferredSize(new Dimension(600, 300));
         }
 
         void setData(List<Integer> data, String torrentTitle) {
-            this.data  = data;
-            this.title = torrentTitle;
-            // Widen preferred width proportionally when there are many pieces
-            if (data != null && !data.isEmpty()) {
-                int minW = Math.max(600, data.size() * 4 + MARGIN_LEFT + MARGIN_RIGHT);
-                setPreferredSize(new Dimension(minW, 300));
-            }
-            revalidate();
+            this.rawData = data;
+            this.title   = torrentTitle;
+            aggregateIntoBuckets();
             repaint();
+        }
+
+        /** Aggregate raw per-piece data into displayable buckets. */
+        private void aggregateIntoBuckets() {
+            if (rawData == null || rawData.isEmpty()) {
+                bucketData   = null;
+                bucketLabels = null;
+                return;
+            }
+
+            int n = rawData.size();
+            // Determine number of buckets: at most MAX_BARS, at least 1
+            int chartW = Math.max(200, getWidth() - MARGIN_LEFT - MARGIN_RIGHT);
+            int maxByWidth = chartW / MIN_BAR_WIDTH;
+            int numBuckets = Math.min(n, Math.min(MAX_BARS, Math.max(1, maxByWidth)));
+
+            bucketData   = new ArrayList<>(numBuckets);
+            bucketLabels = new ArrayList<>(numBuckets);
+
+            int piecesPerBucket = (int) Math.ceil((double) n / numBuckets);
+
+            for (int b = 0; b < numBuckets; b++) {
+                int start = b * piecesPerBucket;
+                int end   = Math.min(start + piecesPerBucket, n);
+                int sum   = 0;
+                for (int i = start; i < end; i++) {
+                    sum += rawData.get(i);
+                }
+                bucketData.add(sum);
+                if (piecesPerBucket == 1) {
+                    bucketLabels.add(String.valueOf(start));
+                } else {
+                    bucketLabels.add(start + "-" + (end - 1));
+                }
+            }
         }
 
         @Override
@@ -295,16 +333,21 @@ public class AlgorithmStatsDialog extends JDialog {
             int W = getWidth();
             int H = getHeight();
 
+            // Re-aggregate if window was resized since last setData
+            if (rawData != null && !rawData.isEmpty()) {
+                aggregateIntoBuckets();
+            }
+
             // Title
             if (title != null) {
                 g2.setColor(Color.DARK_GRAY);
                 g2.setFont(g2.getFont().deriveFont(Font.BOLD, 12f));
                 FontMetrics fm = g2.getFontMetrics();
-                String t = "Rarest-First — " + title;
+                String t = "Rarest-First Piece Selection — " + title;
                 g2.drawString(t, (W - fm.stringWidth(t)) / 2, MARGIN_TOP - 8);
             }
 
-            if (data == null || data.isEmpty()) {
+            if (bucketData == null || bucketData.isEmpty()) {
                 g2.setColor(Color.GRAY);
                 g2.setFont(g2.getFont().deriveFont(Font.PLAIN, 13f));
                 String msg = "No data to display";
@@ -315,11 +358,17 @@ public class AlgorithmStatsDialog extends JDialog {
 
             int chartW = W - MARGIN_LEFT - MARGIN_RIGHT;
             int chartH = H - MARGIN_TOP  - MARGIN_BOTTOM;
-            int n      = data.size();
-            int maxVal = data.stream().mapToInt(Integer::intValue).max().orElse(1);
+            if (chartW < 10 || chartH < 10) return;
+
+            int n      = bucketData.size();
+            int maxVal = bucketData.stream().mapToInt(Integer::intValue).max().orElse(1);
+
+            // Y-axis label
+            boolean bucketed = rawData != null && rawData.size() > n;
+            String yLabel = bucketed ? "Selections (sum per group)" : "Selection Count";
+            g2.setFont(g2.getFont().deriveFont(Font.PLAIN, 10f));
 
             // Draw grid lines + Y-axis labels
-            g2.setFont(g2.getFont().deriveFont(Font.PLAIN, 10f));
             FontMetrics fm = g2.getFontMetrics();
             for (int t = 0; t <= Y_TICKS; t++) {
                 int yVal  = (int) Math.round((double) maxVal * t / Y_TICKS);
@@ -332,45 +381,49 @@ public class AlgorithmStatsDialog extends JDialog {
             }
 
             // Draw bars
-            double barW = (double) chartW / n;
+            int barW = Math.max(1, chartW / n - 1);
+            int gap  = Math.max(0, (chartW - barW * n) / (n + 1));
             for (int i = 0; i < n; i++) {
-                int val  = data.get(i);
+                int val  = bucketData.get(i);
                 if (val <= 0) continue;
                 int barH = (int) ((double) chartH * val / maxVal);
-                int x    = MARGIN_LEFT + (int) (i * barW);
+                int x    = MARGIN_LEFT + gap + i * (barW + gap);
                 int y    = MARGIN_TOP + chartH - barH;
-                int bw   = Math.max(1, (int) barW - 1);
                 g2.setColor(BAR_COLOR);
-                g2.fillRect(x, y, bw, barH);
+                g2.fillRect(x, y, barW, barH);
                 g2.setColor(BAR_COLOR.darker());
-                g2.drawRect(x, y, bw, barH);
+                g2.drawRect(x, y, barW, barH);
             }
 
             // Draw axes
             g2.setColor(Color.DARK_GRAY);
             g2.setStroke(new BasicStroke(1.5f));
-            g2.drawLine(MARGIN_LEFT, MARGIN_TOP, MARGIN_LEFT, MARGIN_TOP + chartH);           // Y
-            g2.drawLine(MARGIN_LEFT, MARGIN_TOP + chartH, MARGIN_LEFT + chartW, MARGIN_TOP + chartH); // X
+            g2.drawLine(MARGIN_LEFT, MARGIN_TOP, MARGIN_LEFT, MARGIN_TOP + chartH);
+            g2.drawLine(MARGIN_LEFT, MARGIN_TOP + chartH, MARGIN_LEFT + chartW, MARGIN_TOP + chartH);
 
-            // X-axis label
-            String xLabel = "Piece Index";
-            g2.setFont(g2.getFont().deriveFont(Font.PLAIN, 11f));
-            fm = g2.getFontMetrics();
-            g2.drawString(xLabel, MARGIN_LEFT + (chartW - fm.stringWidth(xLabel)) / 2,
-                    H - 6);
-
-            // X tick labels (show a few evenly spaced)
+            // X-axis tick labels — show ~10 evenly spaced
             g2.setFont(g2.getFont().deriveFont(Font.PLAIN, 9f));
             fm = g2.getFontMetrics();
             int tickCount = Math.min(n, 10);
-            for (int t = 0; t <= tickCount; t++) {
-                int idx = (int) Math.round((double) (n - 1) * t / tickCount);
-                int xPx = MARGIN_LEFT + (int) ((idx + 0.5) * barW);
-                String lbl = String.valueOf(idx);
-                g2.setColor(Color.DARK_GRAY);
-                g2.drawString(lbl, xPx - fm.stringWidth(lbl) / 2,
-                        MARGIN_TOP + chartH + fm.getAscent() + 4);
+            for (int t = 0; t < tickCount; t++) {
+                int idx = (int) Math.round((double) (n - 1) * t / (tickCount - 1));
+                if (idx < 0 || idx >= n) continue;
+                int xPx = MARGIN_LEFT + gap + idx * (barW + gap) + barW / 2;
+                String lbl = bucketLabels.get(idx);
+                int lblW = fm.stringWidth(lbl);
+                // Only draw if it fits
+                if (xPx - lblW / 2 >= MARGIN_LEFT && xPx + lblW / 2 <= W - MARGIN_RIGHT) {
+                    g2.setColor(Color.DARK_GRAY);
+                    g2.drawString(lbl, xPx - lblW / 2, MARGIN_TOP + chartH + fm.getAscent() + 4);
+                }
             }
+
+            // X-axis label
+            String xLabel = bucketed ? "Piece Index (grouped)" : "Piece Index";
+            g2.setFont(g2.getFont().deriveFont(Font.PLAIN, 11f));
+            fm = g2.getFontMetrics();
+            g2.setColor(Color.DARK_GRAY);
+            g2.drawString(xLabel, MARGIN_LEFT + (chartW - fm.stringWidth(xLabel)) / 2, H - 6);
         }
     }
 }

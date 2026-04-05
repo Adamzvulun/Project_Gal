@@ -276,6 +276,13 @@ def start_download():
 
         download = _run_async(create_and_start())
 
+        # Save stats to DB when download completes
+        def on_download_complete(dl):
+            save_torrent_to_db(dl)
+            log_event_to_db(dl.id, "download_completed",
+                            f"Download completed: {dl.torrent.name}")
+        download.on_complete(on_download_complete)
+
         log_event_to_db(download.id, "download_started",
                         f"Started download: {torrent.name}")
 
