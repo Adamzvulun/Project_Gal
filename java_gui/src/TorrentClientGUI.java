@@ -180,6 +180,12 @@ public class TorrentClientGUI extends JFrame {
         historyButton.addActionListener(this::onShowHistory);
         toolbar.add(historyButton);
 
+        // Statistics button
+        JButton statsButton = new JButton("סטטיסטיקות");
+        statsButton.setToolTipText("Algorithm statistics visualization");
+        statsButton.addActionListener(this::onShowStats);
+        toolbar.add(statsButton);
+
         // Algorithm selection
         toolbar.addSeparator();
         toolbar.add(new JLabel(" Piece: "));
@@ -345,6 +351,11 @@ public class TorrentClientGUI extends JFrame {
                 log("ERROR: Failed to load history: " + ex.getMessage());
             }
         }).start();
+    }
+
+    private void onShowStats(ActionEvent e) {
+        AlgorithmStatsDialog dialog = new AlgorithmStatsDialog(this, apiService);
+        dialog.setVisible(true);
     }
 
     // -- Status Update --

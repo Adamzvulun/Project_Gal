@@ -280,6 +280,41 @@ public class ApiService {
     }
 
     /**
+     * Get per-piece algorithm statistics for a specific torrent.
+     *
+     * @param torrentId The torrent ID.
+     * @return JSONArray of algorithm stat rows.
+     * @throws IOException  If there is a network error.
+     * @throws ApiException If the server returns an error.
+     */
+    public JSONArray getAlgorithmStats(String torrentId) throws IOException, ApiException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/algorithm-stats/" + torrentId))
+                .GET()
+                .build();
+        HttpResponse<String> response = sendRequest(request);
+        checkResponse(response, 200);
+        return new JSONArray(response.body());
+    }
+
+    /**
+     * Get aggregated stats summary for all torrents (for comparison table).
+     *
+     * @return JSONArray of summary rows.
+     * @throws IOException  If there is a network error.
+     * @throws ApiException If the server returns an error.
+     */
+    public JSONArray getStatsSummary() throws IOException, ApiException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/stats-summary"))
+                .GET()
+                .build();
+        HttpResponse<String> response = sendRequest(request);
+        checkResponse(response, 200);
+        return new JSONArray(response.body());
+    }
+
+    /**
      * Get event log from the server.
      *
      * @param limit Maximum number of events to retrieve.
