@@ -67,6 +67,7 @@ class DownloadStats:
         self.peak_speed = 0.0
         self.choke_count = 0
         self.unchoke_count = 0
+        self.choke_cycles = 0   # number of times the peer algo ran
 
     @property
     def elapsed_time(self) -> float:
@@ -506,6 +507,7 @@ class Download:
                 await self._tit_for_tat_unchoke()
             else:
                 await self._round_robin_unchoke()
+            self.stats.choke_cycles += 1
 
     async def _tit_for_tat_unchoke(self):
         """Implement the Tit-for-Tat choke/unchoke algorithm.

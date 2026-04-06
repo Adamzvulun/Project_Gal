@@ -1,3 +1,6 @@
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -180,6 +183,12 @@ public class TorrentClientGUI extends JFrame {
         historyButton.addActionListener(this::onShowHistory);
         toolbar.add(historyButton);
 
+        // Statistics button
+        JButton statsButton = new JButton("Statistics");
+        statsButton.setToolTipText("Algorithm statistics visualization");
+        statsButton.addActionListener(this::onShowStats);
+        toolbar.add(statsButton);
+
         // Algorithm selection
         toolbar.addSeparator();
         toolbar.add(new JLabel(" Piece: "));
@@ -331,20 +340,94 @@ public class TorrentClientGUI extends JFrame {
     private void onShowHistory(ActionEvent e) {
         new Thread(() -> {
             try {
-                String history = apiService.getHistory();
+                String historyJson = apiService.getHistory();
+                JSONArray arr = new JSONArray(historyJson);
+
+                String[] cols = {"Name", "Size", "Status", "Avg Speed",
+                        "Peak Speed", "Time", "Piece Algo", "Peer Algo"};
+                DefaultTableModel model = new DefaultTableModel(cols, 0) {
+                    @Override public boolean isCellEditable(int r, int c) { return false; }
+                };
+
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject o = arr.getJSONObject(i);
+                    model.addRow(new Object[]{
+                            o.optString("name", "—"),
+                            formatSize(o.optLong("size", 0)),
+                            o.optString("final_status", "—"),
+                            formatSpeed(o.optDouble("avg_speed", 0)),
+                            formatSpeed(o.optDouble("peak_speed", 0)),
+                            formatDuration(o.optInt("total_time_seconds", 0)),
+                            friendlyAlgo(o.optString("piece_algorithm", "")),
+                            friendlyAlgo(o.optString("peer_algorithm", ""))
+                    });
+                }
+
                 SwingUtilities.invokeLater(() -> {
-                    JTextArea textArea = new JTextArea(history);
-                    textArea.setEditable(false);
-                    textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-                    JScrollPane scrollPane = new JScrollPane(textArea);
-                    scrollPane.setPreferredSize(new Dimension(600, 400));
-                    JOptionPane.showMessageDialog(this, scrollPane,
-                            "Download History", JOptionPane.INFORMATION_MESSAGE);
+                    JDialog dlg = new JDialog(this, "Download History", false);
+                    dlg.setSize(720, 380);
+                    dlg.setLocationRelativeTo(this);
+                    dlg.setLayout(new BorderLayout(6, 6));
+
+                    JTable table = new JTable(model);
+                    table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+                    table.getTableHeader().setReorderingAllowed(false);
+                    dlg.add(new JScrollPane(table), BorderLayout.CENTER);
+
+                    JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 4));
+                    JButton clearBtn = new JButton("Clear History");
+                    clearBtn.addActionListener(ev -> {
+                        int choice = JOptionPane.showConfirmDialog(dlg,
+                                "Clear all download history?", "Confirm",
+                                JOptionPane.YES_NO_OPTION);
+                        if (choice == JOptionPane.YES_OPTION) {
+                            new Thread(() -> {
+                                try {
+                                    apiService.clearHistory();
+                                    SwingUtilities.invokeLater(() -> {
+                                        model.setRowCount(0);
+                                        log("History cleared.");
+                                    });
+                                } catch (Exception ex2) {
+                                    log("ERROR clearing history: " + ex2.getMessage());
+                                }
+                            }).start();
+                        }
+                    });
+                    btnPanel.add(clearBtn);
+                    JButton closeBtn = new JButton("Close");
+                    closeBtn.addActionListener(ev -> dlg.dispose());
+                    btnPanel.add(closeBtn);
+                    dlg.add(btnPanel, BorderLayout.SOUTH);
+
+                    dlg.setVisible(true);
                 });
             } catch (Exception ex) {
                 log("ERROR: Failed to load history: " + ex.getMessage());
             }
         }).start();
+    }
+
+    private static String friendlyAlgo(String raw) {
+        if (raw == null || raw.isEmpty()) return "—";
+        switch (raw) {
+            case "rarest_first": return "Rarest-First";
+            case "random":       return "Random";
+            case "tit_for_tat":  return "Tit-for-Tat";
+            case "round_robin":  return "Round-Robin";
+            default:             return raw;
+        }
+    }
+
+    private static String formatDuration(int seconds) {
+        if (seconds <= 0) return "—";
+        if (seconds < 60) return seconds + "s";
+        return String.format("%dm %ds", seconds / 60, seconds % 60);
+    }
+
+    private void onShowStats(ActionEvent e) {
+        AlgorithmStatsDialog dialog = new AlgorithmStatsDialog(this, apiService);
+        dialog.setVisible(true);
     }
 
     // -- Status Update --
@@ -356,7 +439,7 @@ public class TorrentClientGUI extends JFrame {
             } catch (Exception e) {
                 // Ignore refresh errors
             }
-        }, 1, 2, TimeUnit.SECONDS);
+        }, 1, 1, TimeUnit.SECONDS);
     }
 
     private void refreshStatus() {

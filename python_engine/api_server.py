@@ -141,6 +141,19 @@ def init_database():
         )
     """)
 
+    # Migration: add algorithm columns if they don't exist yet
+    for col, col_def in [("piece_algorithm", "TEXT DEFAULT 'rarest_first'"),
+                         ("peer_algorithm",  "TEXT DEFAULT 'tit_for_tat'")]:
+        try:
+            cursor.execute(f"ALTER TABLE torrents ADD COLUMN {col} {col_def}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+    try:
+        cursor.execute("ALTER TABLE performance_stats ADD COLUMN choke_cycles INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     conn.commit()
     conn.close()
     logger.info("Database initialized")
@@ -158,8 +171,8 @@ def save_torrent_to_db(download):
         cursor.execute("""
             INSERT OR REPLACE INTO torrents
                 (id, info_hash, name, size, started_at, completed_at,
-                 total_time_seconds, final_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 total_time_seconds, final_status, piece_algorithm, peer_algorithm)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             download.id,
             download.torrent.info_hash_hex(),
@@ -170,18 +183,21 @@ def save_torrent_to_db(download):
             datetime.datetime.fromtimestamp(stats.end_time).isoformat()
             if stats.end_time else None,
             int(stats.elapsed_time) if stats.elapsed_time else 0,
-            download.state.value
+            download.state.value,
+            download.piece_algorithm.value,
+            download.peer_algorithm.value
         ))
 
         cursor.execute("""
             INSERT OR REPLACE INTO performance_stats
-                (torrent_id, avg_speed, peak_speed, avg_peers)
-            VALUES (?, ?, ?, ?)
+                (torrent_id, avg_speed, peak_speed, avg_peers, choke_cycles)
+            VALUES (?, ?, ?, ?, ?)
         """, (
             download.id,
             stats.average_speed,
             stats.peak_speed,
-            stats.connected_peers
+            stats.connected_peers,
+            stats.choke_cycles
         ))
 
         # Save algorithm stats
@@ -265,6 +281,13 @@ def start_download():
             return download
 
         download = _run_async(create_and_start())
+
+        # Save stats to DB when download completes
+        def on_download_complete(dl):
+            save_torrent_to_db(dl)
+            log_event_to_db(dl.id, "download_completed",
+                            f"Download completed: {dl.torrent.name}")
+        download.on_complete(on_download_complete)
 
         log_event_to_db(download.id, "download_started",
                         f"Started download: {torrent.name}")
@@ -368,6 +391,22 @@ def get_history():
     return jsonify(rows)
 
 
+@app.route('/history', methods=['DELETE'])
+def clear_history():
+    """Clear all download history from SQLite."""
+    with _db_lock:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM algorithm_stats")
+        cursor.execute("DELETE FROM performance_stats")
+        cursor.execute("DELETE FROM events")
+        cursor.execute("DELETE FROM torrents")
+        conn.commit()
+        conn.close()
+    logger.info("Download history cleared")
+    return jsonify({"status": "ok"})
+
+
 @app.route('/events', methods=['GET'])
 def get_events():
     """Get event log from SQLite."""
@@ -403,6 +442,28 @@ def get_algorithm_stats(torrent_id: str):
         SELECT * FROM algorithm_stats WHERE torrent_id = ?
         ORDER BY piece_index
     """, (torrent_id,))
+    rows = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return jsonify(rows)
+
+
+@app.route('/stats-summary', methods=['GET'])
+def get_stats_summary():
+    """Aggregated per-torrent stats for algorithm comparison table."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT t.id, t.name, t.piece_algorithm, t.peer_algorithm,
+               t.total_time_seconds, t.size, t.final_status,
+               p.avg_speed, p.peak_speed, p.avg_peers,
+               COALESCE(p.choke_cycles, 0) AS choke_cycles,
+               (SELECT COUNT(*)   FROM algorithm_stats a WHERE a.torrent_id = t.id)          AS piece_count,
+               (SELECT SUM(a.selected_as_rarest) FROM algorithm_stats a WHERE a.torrent_id = t.id) AS total_rarest_selections
+        FROM torrents t
+        LEFT JOIN performance_stats p ON t.id = p.torrent_id
+        ORDER BY t.started_at DESC
+    """)
     rows = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return jsonify(rows)
