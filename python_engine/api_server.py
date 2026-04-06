@@ -381,7 +381,8 @@ def get_history():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT t.*, p.avg_speed, p.peak_speed, p.avg_peers
+        SELECT t.*, p.avg_speed, p.peak_speed, p.avg_peers,
+               COALESCE(p.choke_cycles, 0) AS choke_cycles
         FROM torrents t
         LEFT JOIN performance_stats p ON t.id = p.torrent_id
         ORDER BY t.started_at DESC

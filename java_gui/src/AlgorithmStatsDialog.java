@@ -3,7 +3,6 @@ import org.json.JSONObject;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.util.ArrayList;
@@ -12,7 +11,7 @@ import java.util.List;
 /**
  * Dialog showing algorithm statistics visualization:
  *  - Tab 1: Bar chart of Rarest-First piece selection distribution for a chosen torrent
- *  - Tab 2: Performance comparison table across all completed downloads
+ *  - Tab 2: General lifetime statistics across all downloads
  */
 public class AlgorithmStatsDialog extends JDialog {
 
@@ -24,8 +23,19 @@ public class AlgorithmStatsDialog extends JDialog {
     private JLabel summaryLabel;
     private List<TorrentEntry> torrentEntries = new ArrayList<>();
 
-    // Tab 2 — comparison table
-    private DefaultTableModel compTableModel;
+    // Tab 2 — general statistics
+    private JLabel[] statValueLabels;
+    private static final String[] STAT_NAMES = {
+        "Total Files Downloaded",
+        "Total Data Downloaded",
+        "Total Download Time",
+        "Average Download Speed",
+        "Best Peak Speed",
+        "Total Peers Connected",
+        "Total Choke/Unchoke Cycles",
+        "Largest File",
+        "Fastest Download"
+    };
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -40,7 +50,7 @@ public class AlgorithmStatsDialog extends JDialog {
 
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("Piece Selection (Rarest-First)", buildPieceTab());
-        tabs.addTab("Performance Comparison", buildComparisonTab());
+        tabs.addTab("General Statistics", buildGeneralStatsTab());
         add(tabs, BorderLayout.CENTER);
 
         // Close button at bottom
@@ -85,9 +95,9 @@ public class AlgorithmStatsDialog extends JDialog {
         return panel;
     }
 
-    private JPanel buildComparisonTab() {
+    private JPanel buildGeneralStatsTab() {
         JPanel panel = new JPanel(new BorderLayout(6, 6));
-        panel.setBorder(new EmptyBorder(8, 8, 8, 8));
+        panel.setBorder(new EmptyBorder(12, 12, 12, 12));
 
         // Top row: Refresh + Clear History
         JPanel topRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
@@ -104,11 +114,11 @@ public class AlgorithmStatsDialog extends JDialog {
                     try {
                         apiService.clearHistory();
                         SwingUtilities.invokeLater(() -> {
-                            compTableModel.setRowCount(0);
                             torrentEntries.clear();
                             torrentPicker.removeAllItems();
                             barChartPanel.setData(null, null);
                             summaryLabel.setText("History cleared.");
+                            resetGeneralStats();
                         });
                     } catch (Exception ex) {
                         SwingUtilities.invokeLater(() ->
@@ -120,17 +130,45 @@ public class AlgorithmStatsDialog extends JDialog {
         topRow.add(clearBtn);
         panel.add(topRow, BorderLayout.NORTH);
 
-        String[] cols = {"Name", "Piece Algo", "Peer Algo",
-                "Avg Speed", "Peak Speed", "Time",
-                "Peer Algo Cycles", "Status"};
-        compTableModel = new DefaultTableModel(cols, 0) {
-            @Override public boolean isCellEditable(int r, int c) { return false; }
-        };
-        JTable table = new JTable(compTableModel);
-        table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
-        table.getTableHeader().setReorderingAllowed(false);
+        // Stats grid
+        JPanel grid = new JPanel(new GridBagLayout());
+        grid.setBackground(Color.WHITE);
+        grid.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(200, 200, 200)),
+                new EmptyBorder(16, 20, 16, 20)));
 
-        panel.add(new JScrollPane(table), BorderLayout.CENTER);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(8, 8, 8, 8);
+
+        statValueLabels = new JLabel[STAT_NAMES.length];
+
+        for (int i = 0; i < STAT_NAMES.length; i++) {
+            gbc.gridx = 0;
+            gbc.gridy = i;
+            gbc.weightx = 0.4;
+            gbc.anchor = GridBagConstraints.WEST;
+
+            JLabel nameLabel = new JLabel(STAT_NAMES[i] + ":");
+            nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD, 13f));
+            nameLabel.setForeground(new Color(60, 60, 60));
+            grid.add(nameLabel, gbc);
+
+            gbc.gridx = 1;
+            gbc.weightx = 0.6;
+
+            statValueLabels[i] = new JLabel("—");
+            statValueLabels[i].setFont(statValueLabels[i].getFont().deriveFont(Font.PLAIN, 13f));
+            statValueLabels[i].setForeground(new Color(40, 40, 40));
+            grid.add(statValueLabels[i], gbc);
+        }
+
+        // Add separator line before "notable" stats
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setBackground(Color.WHITE);
+        wrapper.add(grid, BorderLayout.NORTH);
+        panel.add(new JScrollPane(wrapper), BorderLayout.CENTER);
+
         return panel;
     }
 
@@ -149,29 +187,12 @@ public class AlgorithmStatsDialog extends JDialog {
     }
 
     private void populateSummary(JSONArray summary) {
-        // Populate comparison table
-        compTableModel.setRowCount(0);
         torrentEntries.clear();
 
         for (int i = 0; i < summary.length(); i++) {
             JSONObject row = summary.getJSONObject(i);
-
-            String id     = row.optString("id");
-            String name   = row.optString("name", "Unknown");
-            String pAlgo  = friendlyAlgo(row.optString("piece_algorithm", "rarest_first"));
-            String eAlgo  = friendlyAlgo(row.optString("peer_algorithm",  "tit_for_tat"));
-            double avgSpd  = row.optDouble("avg_speed",    0);
-            double pkSpd   = row.optDouble("peak_speed",   0);
-            int    time    = row.optInt("total_time_seconds", 0);
-            int    cycles  = row.optInt("choke_cycles",   0);
-            String status  = row.optString("final_status", "-");
-
-            compTableModel.addRow(new Object[]{
-                    name, pAlgo, eAlgo,
-                    formatSpeed(avgSpd), formatSpeed(pkSpd),
-                    formatDuration(time), cycles, status
-            });
-
+            String id   = row.optString("id");
+            String name = row.optString("name", "Unknown");
             torrentEntries.add(new TorrentEntry(id, name));
         }
 
@@ -189,6 +210,9 @@ public class AlgorithmStatsDialog extends JDialog {
         } else {
             onTorrentSelected();
         }
+
+        // Update general statistics tab
+        updateGeneralStats(summary);
     }
 
     private void onTorrentSelected() {
@@ -244,6 +268,65 @@ public class AlgorithmStatsDialog extends JDialog {
         barChartPanel.setData(counts, torrentName);
     }
 
+    // ── General Statistics ────────────────────────────────────────────────────
+
+    private void updateGeneralStats(JSONArray summary) {
+        if (summary.length() == 0) {
+            resetGeneralStats();
+            return;
+        }
+
+        int totalFiles = summary.length();
+        long totalDataBytes = 0;
+        int totalTimeSec = 0;
+        double bestPeak = 0;
+        int totalPeers = 0;
+        int totalChokeCycles = 0;
+        String largestName = "—"; long largestSize = 0;
+        String fastestName = "—"; double fastestSpeed = 0;
+
+        for (int i = 0; i < summary.length(); i++) {
+            JSONObject row = summary.getJSONObject(i);
+            long size      = row.optLong("size", 0);
+            int timeSec    = row.optInt("total_time_seconds", 0);
+            double avgSpd  = row.optDouble("avg_speed", 0);
+            double pkSpd   = row.optDouble("peak_speed", 0);
+            int peers      = row.optInt("avg_peers", 0);
+            int cycles     = row.optInt("choke_cycles", 0);
+            String name    = row.optString("name", "Unknown");
+
+            totalDataBytes += size;
+            totalTimeSec   += timeSec;
+            if (pkSpd > bestPeak) bestPeak = pkSpd;
+            totalPeers     += peers;
+            totalChokeCycles += cycles;
+            if (size > largestSize) { largestSize = size; largestName = name; }
+            if (avgSpd > fastestSpeed) { fastestSpeed = avgSpd; fastestName = name; }
+        }
+
+        double avgSpeed = totalTimeSec > 0 ? (double) totalDataBytes / totalTimeSec : 0;
+
+        statValueLabels[0].setText(String.valueOf(totalFiles));
+        statValueLabels[1].setText(formatSize(totalDataBytes));
+        statValueLabels[2].setText(formatDurationLong(totalTimeSec));
+        statValueLabels[3].setText(formatSpeed(avgSpeed));
+        statValueLabels[4].setText(formatSpeed(bestPeak));
+        statValueLabels[5].setText(String.valueOf(totalPeers));
+        statValueLabels[6].setText(String.valueOf(totalChokeCycles));
+        statValueLabels[7].setText(largestSize > 0
+                ? largestName + " (" + formatSize(largestSize) + ")"
+                : "—");
+        statValueLabels[8].setText(fastestSpeed > 0
+                ? fastestName + " (" + formatSpeed(fastestSpeed) + ")"
+                : "—");
+    }
+
+    private void resetGeneralStats() {
+        for (JLabel label : statValueLabels) {
+            label.setText("—");
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static String friendlyAlgo(String raw) {
@@ -263,11 +346,26 @@ public class AlgorithmStatsDialog extends JDialog {
         return String.format("%dm %ds", seconds / 60, seconds % 60);
     }
 
+    private static String formatDurationLong(int seconds) {
+        if (seconds <= 0) return "—";
+        if (seconds < 60) return seconds + "s";
+        if (seconds < 3600) return String.format("%dm %ds", seconds / 60, seconds % 60);
+        return String.format("%dh %dm %ds", seconds / 3600, (seconds % 3600) / 60, seconds % 60);
+    }
+
     private static String formatSpeed(double bytesPerSec) {
         if (bytesPerSec <= 0)         return "—";
         if (bytesPerSec < 1024)       return String.format("%.0f B/s",  bytesPerSec);
         if (bytesPerSec < 1024*1024)  return String.format("%.1f KB/s", bytesPerSec / 1024);
         return                               String.format("%.1f MB/s", bytesPerSec / (1024*1024));
+    }
+
+    private static String formatSize(long bytes) {
+        if (bytes <= 0)                    return "0 B";
+        if (bytes < 1024)                  return bytes + " B";
+        if (bytes < 1024 * 1024)           return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024L * 1024 * 1024)   return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        return                                    String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
     }
 
     // ── Inner classes ─────────────────────────────────────────────────────────
