@@ -43,8 +43,9 @@ Project_Gal/
 │
 ├── java_gui/                   # Java Swing GUI (frontend)
 │   ├── src/
-│   │   ├── TorrentClientGUI.java   # Main window, table, log area, toolbar
-│   │   └── ApiService.java         # HTTP client for the Python REST API
+│   │   ├── TorrentClientGUI.java       # Main window, table, log area, toolbar
+│   │   ├── ApiService.java             # HTTP client for the Python REST API
+│   │   └── AlgorithmStatsDialog.java   # Statistics visualization dialog (charts)
 │   ├── build/                  # Compiled .class files
 │   └── lib/
 │       └── json.jar            # org.json library for JSON parsing
@@ -327,6 +328,14 @@ HTTP client using java.net.http.HttpClient.
 - `isServerAvailable() → boolean` — Health check
 - `TorrentStatus` — Inner class with all status fields including `downloadPath`, `fromJson()` factory
 
+### AlgorithmStatsDialog.java
+Modal JDialog for algorithm performance visualization, launched via "Stats" button in the toolbar.
+- Two tabs: **Piece Selection** and **General Statistics**
+- **Piece Selection tab** — Custom bar chart (Java2D) showing rarest-first piece selection distribution across frequency buckets; compares rarest-first vs. random selection behavior
+- **General Statistics tab** — Displays totals: files downloaded, data transferred, average speed, total peers seen, choke/unchoke cycle count
+- Fetches data from `GET /algorithm-stats/<id>` on the Python REST API
+- Stateless dialog: closes and reopens cleanly; data refreshed each time it is opened
+
 ---
 
 ## BitTorrent Protocol Implementation Details
@@ -427,7 +436,7 @@ Test files exist for all modules. Tests use pytest and pytest-asyncio.
 
 ## Git Branch
 
-Development branch: `claude/bitTorrent-file-sharing-system-UcIZc`
+Main branch: `main`
 
 ## Recent Changes (latest session)
 
@@ -435,3 +444,8 @@ Development branch: `claude/bitTorrent-file-sharing-system-UcIZc`
 2. **Download completion status** — GUI now shows "Completed" state, logs include save path, popup notification on completion
 3. **Download directory chooser** — User picks save folder via GUI dialog when adding a torrent (passed through API → engine)
 4. **Location column** — Downloads table shows the save path for each download
+5. **Algorithm Statistics dialog** — `AlgorithmStatsDialog.java` with custom Java2D bar charts showing rarest-first piece selection distribution and general download statistics
+6. **General Statistics tab** — Replaced Performance tab; shows files downloaded, data transferred, average speed, peer count, choke/unchoke cycles
+7. **Download completion delay fix** — GUI now detects completion via log polling immediately instead of waiting for the next status poll cycle
+8. **Choke/unchoke stats fix** — Choke cycle count was always showing 0; now correctly increments and reports via `/algorithm-stats/<id>`
+9. **History dialog improvements** — Added "Clear History" button, faster 2-second polling, fixed chart gap rendering

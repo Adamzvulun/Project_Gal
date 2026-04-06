@@ -38,6 +38,10 @@ A complete BitTorrent-style distributed file sharing system with a Python engine
 
 ```
 project/
+├── start.sh                 # One-click launcher (Linux/macOS)
+├── start.bat                # One-click launcher (Windows)
+├── requirements.txt
+├── README.md
 ├── python_engine/           # BitTorrent engine (Python)
 │   ├── bencode.py           # Bencode encoder/decoder
 │   ├── torrent_metadata.py  # .torrent file parser
@@ -47,6 +51,7 @@ project/
 │   ├── download_manager.py  # Central download coordinator & Tit-for-Tat
 │   ├── security.py          # Hash verification & malicious peer detection
 │   ├── api_server.py        # REST API server (Flask)
+│   ├── main.py              # CLI entry point
 │   └── tests/               # Unit tests
 │       ├── test_bencode.py
 │       ├── test_torrent_metadata.py
@@ -58,14 +63,12 @@ project/
 │       └── test_api_server.py
 ├── java_gui/                # GUI client (Java Swing)
 │   └── src/
-│       ├── TorrentClientGUI.java  # Main window
-│       └── ApiService.java        # REST API client
-├── data/
-│   ├── downloads/           # Downloaded files
-│   ├── state/               # JSON state files
-│   └── history.db           # SQLite database
-├── requirements.txt
-└── README.md
+│       ├── TorrentClientGUI.java      # Main window
+│       ├── ApiService.java            # REST API client
+│       └── AlgorithmStatsDialog.java  # Statistics visualization dialog
+└── data/                    # Created at runtime
+    ├── state/               # JSON state files (download resume)
+    └── history.db           # SQLite database
 ```
 
 ## Python Modules
@@ -87,6 +90,7 @@ project/
 |-------|---------------|
 | `TorrentClientGUI` | Main window with download table, progress bars, and control buttons |
 | `ApiService` | HTTP client for communicating with the Python REST API |
+| `AlgorithmStatsDialog` | Statistics visualization dialog with bar charts for piece/peer algorithm performance |
 
 ## Algorithms
 
@@ -110,6 +114,8 @@ Rewards contributing peers by unchoking the top-K uploaders every 10 seconds. In
 | POST | `/torrents/{id}/pause` | Pause a download |
 | POST | `/torrents/{id}/resume` | Resume a download |
 | POST | `/torrents/{id}/cancel` | Cancel a download |
+| GET | `/torrents/{id}/logs?since=N` | Incremental log polling (sequence-based) |
+| GET | `/algorithm-stats/{id}` | Piece/peer algorithm performance statistics |
 | GET | `/history` | Get download history (SQLite) |
 | GET | `/events` | Get event log |
 | GET | `/health` | Health check |
@@ -118,25 +124,44 @@ Rewards contributing peers by unchoking the top-K uploaders every 10 seconds. In
 
 - **JSON files** (`data/state/`): Real-time download state for recovery after restart
 - **SQLite** (`data/history.db`): Historical data, performance stats, algorithm stats, event log
+- **Downloads**: Saved to the directory chosen by the user via the GUI folder picker (not a fixed path)
 
 ## Setup & Running
 
-### Python Engine
+### One-click (recommended)
+
 ```bash
+# Linux/macOS
+./start.sh
+
+# Windows
+start.bat
+```
+
+Both scripts automatically install Python and Java if missing, compile the Java GUI, start the Flask API server in the background, and launch the GUI. The server is shut down automatically when the GUI is closed.
+
+### Manual
+
+```bash
+# Terminal 1: Start Python API server
 pip install -r requirements.txt
 python -m python_engine.api_server
+
+# Terminal 2: Compile and run Java GUI
+javac -cp java_gui/lib/json.jar -d java_gui/build java_gui/src/*.java
+java -cp "java_gui/build:java_gui/lib/json.jar" TorrentClientGUI
+```
+
+### CLI only (no GUI)
+
+```bash
+python -m python_engine path/to/file.torrent --output ./downloads
+# Optional flags: --piece-algorithm rarest_first|random  --peer-algorithm tit_for_tat|round_robin
 ```
 
 ### Run Tests
 ```bash
-pytest python_engine/tests/ -v
-```
-
-### Java GUI
-```bash
-cd java_gui/src
-javac -cp .:json-20231013.jar TorrentClientGUI.java ApiService.java
-java -cp .:json-20231013.jar TorrentClientGUI
+python -m pytest python_engine/tests/ -v
 ```
 
 ## Security Features
