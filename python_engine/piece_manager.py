@@ -9,6 +9,7 @@ import hashlib
 import logging
 import random
 import threading
+import time
 from enum import Enum
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -25,12 +26,39 @@ class PieceStatus(Enum):
 class Block:
     """Represents a block within a piece."""
 
+    BLOCK_REQUEST_TIMEOUT = 10  # seconds before a requested block can be re-requested
+
     def __init__(self, piece_index: int, offset: int, length: int):
         self.piece_index = piece_index
         self.offset = offset
         self.length = length
         self.data: Optional[bytes] = None
         self.received = False
+        self.requested = False
+        self.requested_time: float = 0
+        self.requested_by: Optional[str] = None  # peer_key that requested this block
+
+    @property
+    def is_requestable(self) -> bool:
+        """Check if this block can be (re-)requested."""
+        if self.received:
+            return False
+        if not self.requested:
+            return True
+        # Allow re-request after timeout
+        return (time.time() - self.requested_time) > self.BLOCK_REQUEST_TIMEOUT
+
+    def mark_requested(self, peer_key: str):
+        """Mark this block as requested by a peer."""
+        self.requested = True
+        self.requested_time = time.time()
+        self.requested_by = peer_key
+
+    def clear_request(self):
+        """Clear the request state so the block can be re-requested."""
+        self.requested = False
+        self.requested_time = 0
+        self.requested_by = None
 
     def __repr__(self):
         return f"Block(piece={self.piece_index}, offset={self.offset}, len={self.length})"
@@ -97,6 +125,16 @@ class Piece:
         """Get blocks that haven't been received yet."""
         return [b for b in self.blocks if not b.received]
 
+    def get_requestable_blocks(self) -> List[Block]:
+        """Get blocks that can be requested (not received, not recently requested)."""
+        return [b for b in self.blocks if b.is_requestable]
+
+    def clear_peer_requests(self, peer_key: str):
+        """Clear request state for all blocks requested by a specific peer."""
+        for block in self.blocks:
+            if block.requested_by == peer_key and not block.received:
+                block.clear_request()
+
     def reset(self):
         """Reset the piece to missing state (e.g., after hash failure)."""
         self.status = PieceStatus.MISSING
@@ -104,6 +142,7 @@ class Piece:
         for block in self.blocks:
             block.data = None
             block.received = False
+            block.clear_request()
 
 
 class PieceManager:
@@ -145,6 +184,9 @@ class PieceManager:
 
         # Statistics
         self.rarest_selections: Dict[int, int] = {i: 0 for i in range(num_pieces)}
+
+        # Track when pieces entered IN_PROGRESS state for timeout detection
+        self._piece_start_times: Dict[int, float] = {}
 
         self._lock = threading.Lock()
 
@@ -309,7 +351,28 @@ class PieceManager:
         """
         piece = self.pieces[piece_index]
         piece.status = PieceStatus.IN_PROGRESS
+        self._piece_start_times[piece_index] = time.time()
         return piece.get_pending_blocks()
+
+    def reset_stale_pieces(self, timeout: float):
+        """Reset pieces that have been IN_PROGRESS longer than timeout.
+
+        This prevents pieces from getting stuck when a peer dies mid-transfer.
+
+        Args:
+            timeout: Seconds after which an IN_PROGRESS piece is considered stale.
+        """
+        now = time.time()
+        stale = []
+        for idx, start_time in list(self._piece_start_times.items()):
+            if idx < len(self.pieces) and self.pieces[idx].status == PieceStatus.IN_PROGRESS:
+                if now - start_time > timeout:
+                    stale.append(idx)
+
+        for idx in stale:
+            self.pieces[idx].reset()
+            del self._piece_start_times[idx]
+            logger.debug(f"Reset stale piece {idx} after {timeout}s timeout")
 
     def submit_block(self, piece_index: int, offset: int, data: bytes) -> bool:
         """Submit a received block to a piece.
@@ -373,6 +436,37 @@ class PieceManager:
     def has_piece(self, piece_index: int) -> bool:
         """Check if we have completed a piece."""
         return self.pieces[piece_index].status == PieceStatus.COMPLETED
+
+    def clear_peer_requests(self, peer_key: str):
+        """Clear block request state for all blocks requested by a peer.
+
+        Called when a peer chokes us or disconnects, so those blocks
+        become immediately re-requestable by other peers.
+        """
+        for piece in self.pieces:
+            if piece.status == PieceStatus.IN_PROGRESS:
+                piece.clear_peer_requests(peer_key)
+
+    def find_in_progress_piece(self, peer_pieces: List[bool], exclude: Optional[Set[int]] = None) -> Optional[int]:
+        """Find an IN_PROGRESS piece that has requestable blocks and the peer has.
+
+        Args:
+            peer_pieces: Which pieces the peer has.
+            exclude: Piece indices to skip (already assigned to other peers).
+
+        Returns:
+            Piece index, or None.
+        """
+        for piece in self.pieces:
+            if piece.status != PieceStatus.IN_PROGRESS:
+                continue
+            if piece.index >= len(peer_pieces) or not peer_pieces[piece.index]:
+                continue
+            if exclude and piece.index in exclude:
+                continue
+            if piece.get_requestable_blocks():
+                return piece.index
+        return None
 
     def get_our_bitfield(self) -> List[bool]:
         """Get our current bitfield as a list of booleans."""

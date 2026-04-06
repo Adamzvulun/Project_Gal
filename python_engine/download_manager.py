@@ -7,6 +7,8 @@ and coordinates the overall download flow.
 """
 
 import asyncio
+import collections
+import concurrent.futures
 import json
 import logging
 import os
@@ -28,6 +30,8 @@ CHOKE_INTERVAL = 10  # seconds between choke/unchoke decisions
 MAX_UNCHOKED_PEERS = 4  # number of peers to unchoke
 MAX_CONNECTIONS = 50
 KEEP_ALIVE_INTERVAL = 60  # seconds
+PIECE_REQUEST_TIMEOUT = 30  # seconds before resetting a stale in-progress piece
+PEER_CLEANUP_INTERVAL = 15  # seconds between dead peer cleanup passes
 
 
 class DownloadState(Enum):
@@ -121,13 +125,38 @@ class Download:
         self._keep_alive_task: Optional[asyncio.Task] = None
         self._speed_samples = []
 
+        # Thread pool for hash verification and disk I/O
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+
+        # Per-peer piece assignment: peer_key -> piece_index they're working on
+        self._peer_piece: Dict[str, int] = {}
+
         # Round-robin state
         self._rr_index = 0
+
+        # Live log buffer (last 200 messages for GUI polling)
+        self._log_buffer = collections.deque(maxlen=200)
+        self._log_counter = 0
 
         # Event callbacks
         self._on_progress = None
         self._on_complete = None
         self._on_state_change = None
+
+    def _log(self, message: str):
+        """Add a message to the live log buffer."""
+        self._log_counter += 1
+        entry = {
+            "seq": self._log_counter,
+            "time": round(time.time(), 2),
+            "msg": message
+        }
+        self._log_buffer.append(entry)
+        logger.info(f"[{self.id}] {message}")
+
+    def get_logs(self, since_seq: int = 0) -> List[dict]:
+        """Get log entries newer than since_seq."""
+        return [e for e in self._log_buffer if e["seq"] > since_seq]
 
     @property
     def progress(self) -> float:
@@ -162,7 +191,8 @@ class Download:
         self.state = DownloadState.RUNNING
         self.stats.start_time = time.time()
 
-        logger.info(f"Starting download: {self.torrent.name} ({self.id})")
+        self._log(f"Starting download: {self.torrent.name}")
+        self._log(f"Size: {self.torrent.total_size} bytes, Pieces: {self.torrent.num_pieces}, Tracker: {self.torrent.announce}")
 
         self._main_task = asyncio.create_task(self._download_loop())
 
@@ -179,11 +209,13 @@ class Download:
             self._tracker.left = self.torrent.total_size
 
             # Initial announce
+            self._log(f"Contacting tracker: {self.torrent.announce}")
             response = await self._tracker.announce(event='started',
                                                     left=self.torrent.total_size)
             for peer in response.peers:
                 self._known_peers.add(peer)
             self.stats.total_peers_seen = len(self._known_peers)
+            self._log(f"Tracker responded: {len(response.peers)} peers found")
 
             # Start choke/unchoke timer
             self._choke_task = asyncio.create_task(self._choke_loop())
@@ -194,13 +226,24 @@ class Download:
                 callback=self._on_tracker_response
             )
 
-            # Connect to peers and download
-            await self._connect_to_peers()
+            # Connect to peers (non-blocking — don't wait for all 50 attempts)
+            asyncio.create_task(self._connect_to_peers())
 
             # Main piece request loop
+            last_cleanup = time.time()
             while not self.piece_manager.is_complete and self.state == DownloadState.RUNNING:
+                # Reset pieces stuck in IN_PROGRESS for too long
+                self.piece_manager.reset_stale_pieces(PIECE_REQUEST_TIMEOUT)
+
                 await self._request_pieces()
                 await asyncio.sleep(0.1)
+
+                # Periodically clean up dead peers and try new ones
+                now = time.time()
+                if now - last_cleanup > PEER_CLEANUP_INTERVAL:
+                    self._cleanup_dead_peers()
+                    await self._connect_to_peers()
+                    last_cleanup = now
 
                 # Update stats
                 self._update_speed()
@@ -214,15 +257,31 @@ class Download:
                 await self._complete_download()
 
         except asyncio.CancelledError:
-            pass
+            self._log("Download cancelled")
         except Exception as e:
-            logger.error(f"Download error: {e}")
+            self._log(f"Download error: {e}")
+            logger.error(f"Download error: {e}", exc_info=True)
             self.state = DownloadState.ERROR
         finally:
             self._save_state()
 
+    def _cleanup_dead_peers(self):
+        """Remove disconnected peers from the connection pool."""
+        dead_keys = [
+            key for key, conn in self._connections.items()
+            if not conn.connected
+        ]
+        for key in dead_keys:
+            del self._connections[key]
+            self._peer_piece.pop(key, None)
+            self.piece_manager.clear_peer_requests(key)
+            self.piece_manager.remove_peer(key)
+            logger.debug(f"Cleaned up dead peer: {key}")
+
     async def _connect_to_peers(self):
         """Connect to known peers."""
+        self._cleanup_dead_peers()
+
         tasks = []
         for peer in list(self._known_peers):
             peer_key = f"{peer.ip}:{peer.port}"
@@ -261,8 +320,10 @@ class Download:
             # Start message loop
             await conn.start_message_loop()
 
-            logger.info(f"Connected to peer {peer_key}")
+            self._log(f"Connected to peer {peer_key}")
         except PeerConnectionError as e:
+            logger.debug(f"Failed to connect to {peer_key}: {e}")
+        except Exception as e:
             logger.debug(f"Failed to connect to {peer_key}: {e}")
 
     async def _on_peer_message(self, conn: PeerConnection, message: PeerMessage):
@@ -282,29 +343,64 @@ class Download:
                 await conn.send_interested()
 
         elif message.type == MessageType.UNCHOKE:
-            pass  # Can now request pieces from this peer
+            # Peer unchoked us — immediately try to request pieces
+            await self._request_from_peer(peer_key, conn)
+
+        elif message.type == MessageType.CHOKE:
+            # Peer choked us — all our pending requests are silently dropped
+            # Clear block request state so other peers can pick up those blocks
+            self.piece_manager.clear_peer_requests(peer_key)
 
         elif message.type == MessageType.PIECE:
             piece_idx = message.piece_index
             offset = message.block_offset
             data = message.block_data
 
-            if data is not None:
-                is_complete = self.piece_manager.submit_block(piece_idx, offset, data)
-                self.stats.bytes_downloaded += len(data)
+            if data is None:
+                return
 
-                if is_complete:
-                    if self.piece_manager.verify_piece(piece_idx):
-                        self.security.report_successful_piece(peer_key, piece_idx)
-                        await self._write_piece(piece_idx)
-                        # Announce to all peers
-                        await self._broadcast_have(piece_idx)
-                        if self._on_progress:
-                            self._on_progress(self)
-                    else:
-                        self.security.report_hash_failure(peer_key, piece_idx)
-                        if self.security.is_peer_banned(peer_key):
-                            await conn.disconnect()
+            # Guard: skip if piece is already completed (duplicate from another peer)
+            piece = self.piece_manager.pieces[piece_idx]
+            if piece.status == PieceStatus.COMPLETED:
+                return
+
+            is_complete = self.piece_manager.submit_block(piece_idx, offset, data)
+            self.stats.bytes_downloaded += len(data)
+
+            if is_complete:
+                # Run hash verification in thread pool to avoid blocking event loop
+                loop = asyncio.get_event_loop()
+                verified = await loop.run_in_executor(
+                    self._executor, self.piece_manager.verify_piece, piece_idx
+                )
+                if verified:
+                    self.security.report_successful_piece(peer_key, piece_idx)
+                    # Write to disk in thread pool
+                    await loop.run_in_executor(
+                        self._executor, self._write_piece_sync, piece_idx
+                    )
+                    done = self.piece_manager.completed_pieces
+                    self._log(f"Piece {piece_idx} verified OK ({done}/{self.torrent.num_pieces})")
+                    # Clear peer assignment for this piece so peers get new work
+                    for pk, pi in list(self._peer_piece.items()):
+                        if pi == piece_idx:
+                            del self._peer_piece[pk]
+                    # Announce to all peers (non-blocking fire-and-forget)
+                    asyncio.create_task(self._broadcast_have(piece_idx))
+                    if self._on_progress:
+                        self._on_progress(self)
+                    # Immediately try to give this peer new work
+                    await self._request_from_peer(peer_key, conn)
+                else:
+                    self._log(f"Piece {piece_idx} HASH FAILED from {peer_key}")
+                    self.security.report_hash_failure(peer_key, piece_idx)
+                    # Clear peer assignment for the failed piece
+                    for pk, pi in list(self._peer_piece.items()):
+                        if pi == piece_idx:
+                            del self._peer_piece[pk]
+                    if self.security.is_peer_banned(peer_key):
+                        self._log(f"Banned peer {peer_key} (too many hash failures)")
+                        await conn.disconnect()
 
     def _peer_has_needed_pieces(self, conn: PeerConnection) -> bool:
         """Check if a peer has pieces we still need."""
@@ -314,28 +410,90 @@ class Download:
         return False
 
     async def _request_pieces(self):
-        """Request pieces from unchoked peers."""
+        """Request pieces from unchoked peers using per-peer assignment."""
         for peer_key, conn in list(self._connections.items()):
             if not conn.connected or conn.peer_choking or not conn.am_interested:
                 continue
-
-            # Select piece based on algorithm
-            if self.piece_algorithm == AlgorithmType.RAREST_FIRST:
-                piece_idx = self.piece_manager.select_piece_rarest_first(conn.peer_pieces)
-            else:
-                piece_idx = self.piece_manager.select_piece_random(conn.peer_pieces)
-
-            if piece_idx is None:
+            if not conn.can_request:
                 continue
+            try:
+                await self._request_from_peer(peer_key, conn)
+            except Exception as e:
+                logger.debug(f"Error requesting from {peer_key}: {e}")
 
-            blocks = self.piece_manager.start_piece(piece_idx)
-            for block in blocks:
-                try:
-                    await conn.send_request(
-                        block.piece_index, block.offset, block.length
-                    )
-                except PeerConnectionError:
-                    break
+    async def _request_from_peer(self, peer_key: str, conn: PeerConnection):
+        """Send block requests to a specific peer.
+
+        Strategy:
+        1. If the peer has an assigned piece, continue requesting its blocks
+        2. If not (or all blocks requested), assign a new MISSING piece
+        3. Fall back to an IN_PROGRESS piece with timed-out blocks (endgame)
+        """
+        if not conn.connected or conn.peer_choking or not conn.can_request:
+            return
+
+        capacity = conn.request_capacity
+        if capacity <= 0:
+            return
+
+        # Step 1: Continue working on the peer's current piece
+        piece_idx = self._peer_piece.get(peer_key)
+        if piece_idx is not None:
+            piece = self.piece_manager.pieces[piece_idx]
+            if piece.status == PieceStatus.IN_PROGRESS:
+                blocks = piece.get_requestable_blocks()
+                if blocks:
+                    sent = await self._send_block_requests(conn, peer_key, blocks, capacity)
+                    capacity -= sent
+                    if capacity <= 0:
+                        return
+                # If no requestable blocks left but piece not complete, wait for responses
+                if not piece.is_complete and piece.get_pending_blocks():
+                    return
+            # Piece is complete, failed, or all blocks already requested — clear assignment
+            self._peer_piece.pop(peer_key, None)
+
+        # Step 2: Get a new MISSING piece for this peer
+        if self.piece_algorithm == AlgorithmType.RAREST_FIRST:
+            new_idx = self.piece_manager.select_piece_rarest_first(conn.peer_pieces)
+        else:
+            new_idx = self.piece_manager.select_piece_random(conn.peer_pieces)
+
+        if new_idx is not None:
+            blocks = self.piece_manager.start_piece(new_idx)
+            self._peer_piece[peer_key] = new_idx
+            sent = await self._send_block_requests(conn, peer_key, blocks, capacity)
+            capacity -= sent
+            if capacity <= 0:
+                return
+
+        # Step 3: Endgame — find an IN_PROGRESS piece with timed-out blocks
+        assigned_pieces = set(self._peer_piece.values())
+        fallback_idx = self.piece_manager.find_in_progress_piece(
+            conn.peer_pieces, exclude=assigned_pieces
+        )
+        if fallback_idx is not None:
+            self._peer_piece[peer_key] = fallback_idx
+            blocks = self.piece_manager.pieces[fallback_idx].get_requestable_blocks()
+            await self._send_block_requests(conn, peer_key, blocks, capacity)
+
+    async def _send_block_requests(self, conn: PeerConnection, peer_key: str,
+                                    blocks: list, max_to_send: int) -> int:
+        """Send block requests to a peer, up to max_to_send.
+
+        Returns the number of requests successfully sent.
+        """
+        sent = 0
+        for block in blocks:
+            if sent >= max_to_send:
+                break
+            try:
+                await conn.send_request(block.piece_index, block.offset, block.length)
+                block.mark_requested(peer_key)
+                sent += 1
+            except PeerConnectionError:
+                break
+        return sent
 
     async def _choke_loop(self):
         """Periodically run choke/unchoke algorithm."""
@@ -431,56 +589,73 @@ class Download:
                         pass
 
     async def _broadcast_have(self, piece_index: int):
-        """Announce a completed piece to all connected peers."""
+        """Announce a completed piece to all connected peers.
+
+        Each send is independent — we don't wait for all to complete sequentially.
+        """
+        tasks = []
         for conn in list(self._connections.values()):
             if conn.connected:
-                try:
-                    await conn.send_have(piece_index)
-                except PeerConnectionError:
-                    pass
+                tasks.append(self._safe_send_have(conn, piece_index))
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _write_piece(self, piece_index: int):
-        """Write a verified piece to the output file."""
+    async def _safe_send_have(self, conn: PeerConnection, piece_index: int):
+        """Send a HAVE message, suppressing errors."""
+        try:
+            await conn.send_have(piece_index)
+        except Exception:
+            pass
+
+    def _write_piece_sync(self, piece_index: int):
+        """Write a verified piece to the output file(s) — synchronous, for use in executor.
+
+        Handles both single-file and multi-file torrents correctly by
+        tracking a cursor through the piece data and writing the right
+        slice to each file at the right offset.
+        """
         data = self.piece_manager.get_piece_data(piece_index)
         if data is None:
             return
 
         file_offsets = self.torrent.get_file_offset(piece_index)
-        for file_path, offset, length in file_offsets:
+        data_cursor = 0
+
+        for file_path, offset_in_file, length in file_offsets:
             full_path = os.path.join(self.download_dir, file_path)
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            os.makedirs(os.path.dirname(full_path) if os.path.dirname(full_path) else '.', exist_ok=True)
 
-            # Calculate which part of piece data to write
-            piece_start = offset - (self.torrent.get_file_offset(piece_index)[0][1]
-                                    if file_offsets else 0)
-
-            mode = 'r+b' if os.path.exists(full_path) else 'wb'
-            if mode == 'wb':
-                # Create file with correct size
+            # Pre-allocate file if it doesn't exist yet
+            if not os.path.exists(full_path):
                 file_size = next(
                     f.size for f in self.torrent.files if f.path == file_path
                 )
                 with open(full_path, 'wb') as f:
-                    f.seek(file_size - 1)
-                    f.write(b'\x00')
+                    f.truncate(file_size)
 
+            # Write the correct slice of piece data at the correct file offset
             with open(full_path, 'r+b') as f:
-                f.seek(offset)
-                # Write the relevant portion of piece data
-                data_offset = sum(
-                    length for fp, off, length in file_offsets
-                    if fp == file_path and off < offset
-                )
-                f.write(data[data_offset:data_offset + length])
+                f.seek(offset_in_file)
+                f.write(data[data_cursor:data_cursor + length])
+
+            data_cursor += length
+
+    async def _write_piece(self, piece_index: int):
+        """Write a verified piece to disk (async wrapper)."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(self._executor, self._write_piece_sync, piece_index)
 
     async def _complete_download(self):
         """Handle download completion."""
         self.state = DownloadState.COMPLETED
         self.stats.end_time = time.time()
 
-        logger.info(
-            f"Download complete: {self.torrent.name} "
-            f"({self.stats.elapsed_time:.1f}s)"
+        download_path = os.path.join(self.download_dir, self.torrent.name)
+        self._log(
+            f"Download complete! {self.torrent.name} "
+            f"saved to {download_path} "
+            f"in {self.stats.elapsed_time:.1f}s "
+            f"(avg {self.stats.average_speed / 1024:.1f} KB/s)"
         )
 
         if self._tracker:
@@ -620,6 +795,7 @@ class Download:
             "elapsed_time": round(self.stats.elapsed_time, 1),
             "piece_algorithm": self.piece_algorithm.value,
             "peer_algorithm": self.peer_algorithm.value,
+            "download_path": os.path.join(self.download_dir, self.torrent.name),
         }
 
 
@@ -640,7 +816,8 @@ class DownloadManager:
 
     async def add_torrent(self, torrent: TorrentMetadata,
                           piece_algorithm: AlgorithmType = AlgorithmType.RAREST_FIRST,
-                          peer_algorithm: AlgorithmType = AlgorithmType.TIT_FOR_TAT
+                          peer_algorithm: AlgorithmType = AlgorithmType.TIT_FOR_TAT,
+                          download_dir: Optional[str] = None
                           ) -> Download:
         """Add a new torrent download.
 
@@ -648,13 +825,16 @@ class DownloadManager:
             torrent: Parsed torrent metadata.
             piece_algorithm: Piece selection algorithm to use.
             peer_algorithm: Peer selection algorithm to use.
+            download_dir: Override download directory (uses manager default if None).
 
         Returns:
             The created Download object.
         """
+        target_dir = download_dir or self.download_dir
+        os.makedirs(target_dir, exist_ok=True)
         download = Download(
             torrent=torrent,
-            download_dir=self.download_dir,
+            download_dir=target_dir,
             state_dir=self.state_dir,
             piece_algorithm=piece_algorithm,
             peer_algorithm=peer_algorithm

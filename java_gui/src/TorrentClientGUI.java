@@ -7,10 +7,15 @@ import java.awt.event.ActionEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * Main GUI window for the BitTorrent client.
@@ -23,7 +28,7 @@ public class TorrentClientGUI extends JFrame {
 
     // Table columns
     private static final String[] COLUMN_NAMES = {
-            "Name", "Size", "Progress", "Speed", "Peers", "State", "ID"
+            "Name", "Size", "Progress", "Speed", "Peers", "State", "Location", "ID"
     };
     private static final int COL_NAME = 0;
     private static final int COL_SIZE = 1;
@@ -31,7 +36,8 @@ public class TorrentClientGUI extends JFrame {
     private static final int COL_SPEED = 3;
     private static final int COL_PEERS = 4;
     private static final int COL_STATE = 5;
-    private static final int COL_ID = 6;
+    private static final int COL_LOCATION = 6;
+    private static final int COL_ID = 7;
 
     private final ApiService apiService;
     private final DefaultTableModel tableModel;
@@ -44,6 +50,16 @@ public class TorrentClientGUI extends JFrame {
     private JButton pauseButton;
     private JButton resumeButton;
     private JButton cancelButton;
+
+    // Algorithm selection combos
+    private JComboBox<String> pieceAlgorithmCombo;
+    private JComboBox<String> peerAlgorithmCombo;
+
+    // Track last log sequence per torrent for incremental polling
+    private final Map<String, Integer> logSeqTracker = new HashMap<>();
+
+    // Track previous download states to detect completion transitions
+    private final Map<String, String> previousStates = new HashMap<>();
 
     /**
      * Create the main application window.
@@ -66,18 +82,7 @@ public class TorrentClientGUI extends JFrame {
         setMinimumSize(new Dimension(700, 400));
         setLocationRelativeTo(null);
 
-        // Main layout
-        JPanel mainPanel = new JPanel(new BorderLayout(5, 5));
-        mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
-
-        // Toolbar
-        mainPanel.add(createToolbar(), BorderLayout.NORTH);
-
-        // Split pane: downloads table on top, logs on bottom
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        splitPane.setResizeWeight(0.7);
-
-        // Downloads table
+        // Downloads table (must be created before toolbar, which references it)
         tableModel = new DefaultTableModel(COLUMN_NAMES, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
@@ -92,6 +97,18 @@ public class TorrentClientGUI extends JFrame {
         };
         downloadTable = new JTable(tableModel);
         configureTable();
+
+        // Main layout
+        JPanel mainPanel = new JPanel(new BorderLayout(5, 5));
+        mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
+
+        // Toolbar
+        mainPanel.add(createToolbar(), BorderLayout.NORTH);
+
+        // Split pane: downloads table on top, logs on bottom
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        splitPane.setResizeWeight(0.7);
+
         splitPane.setTopComponent(new JScrollPane(downloadTable));
 
         // Log area
@@ -166,16 +183,16 @@ public class TorrentClientGUI extends JFrame {
         // Algorithm selection
         toolbar.addSeparator();
         toolbar.add(new JLabel(" Piece: "));
-        JComboBox<String> pieceAlgoCombo = new JComboBox<>(
+        pieceAlgorithmCombo = new JComboBox<>(
                 new String[]{"Rarest First", "Random"});
-        pieceAlgoCombo.setMaximumSize(new Dimension(120, 30));
-        toolbar.add(pieceAlgoCombo);
+        pieceAlgorithmCombo.setMaximumSize(new Dimension(120, 30));
+        toolbar.add(pieceAlgorithmCombo);
 
         toolbar.add(new JLabel(" Peer: "));
-        JComboBox<String> peerAlgoCombo = new JComboBox<>(
+        peerAlgorithmCombo = new JComboBox<>(
                 new String[]{"Tit-for-Tat", "Round Robin"});
-        peerAlgoCombo.setMaximumSize(new Dimension(120, 30));
-        toolbar.add(peerAlgoCombo);
+        peerAlgorithmCombo.setMaximumSize(new Dimension(120, 30));
+        toolbar.add(peerAlgorithmCombo);
 
         // Enable/disable buttons based on selection
         downloadTable.getSelectionModel().addListSelectionListener(e -> {
@@ -202,6 +219,7 @@ public class TorrentClientGUI extends JFrame {
         downloadTable.getColumnModel().getColumn(COL_SPEED).setPreferredWidth(100);
         downloadTable.getColumnModel().getColumn(COL_PEERS).setPreferredWidth(60);
         downloadTable.getColumnModel().getColumn(COL_STATE).setPreferredWidth(80);
+        downloadTable.getColumnModel().getColumn(COL_LOCATION).setPreferredWidth(200);
         downloadTable.getColumnModel().getColumn(COL_ID).setPreferredWidth(70);
 
         // Progress bar renderer
@@ -212,23 +230,43 @@ public class TorrentClientGUI extends JFrame {
     // -- Action Handlers --
 
     private void onAddTorrent(ActionEvent e) {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
+        // Step 1: Choose .torrent file
+        JFileChooser torrentChooser = new JFileChooser();
+        torrentChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
                 "Torrent Files (*.torrent)", "torrent"));
-        chooser.setDialogTitle("Select Torrent File");
+        torrentChooser.setDialogTitle("Select Torrent File");
 
-        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File file = chooser.getSelectedFile();
-            addTorrent(file);
+        if (torrentChooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
         }
+        File torrentFile = torrentChooser.getSelectedFile();
+
+        // Step 2: Choose save directory
+        JFileChooser dirChooser = new JFileChooser();
+        dirChooser.setDialogTitle("Choose Download Location");
+        dirChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        dirChooser.setAcceptAllFileFilterUsed(false);
+
+        if (dirChooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        File downloadDir = dirChooser.getSelectedFile();
+
+        addTorrent(torrentFile, downloadDir.getAbsolutePath());
     }
 
-    private void addTorrent(File torrentFile) {
+    private void addTorrent(File torrentFile, String downloadDir) {
         setStatus("Starting download: " + torrentFile.getName());
         new Thread(() -> {
             try {
-                String id = apiService.startDownload(torrentFile);
-                log("Download started: " + torrentFile.getName() + " (ID: " + id + ")");
+                // Get selected algorithms from toolbar combos
+                String pieceAlgo = pieceAlgorithmCombo.getSelectedItem().toString()
+                        .toLowerCase().replace(" ", "_").replace("-", "_");
+                String peerAlgo = peerAlgorithmCombo.getSelectedItem().toString()
+                        .toLowerCase().replace(" ", "_").replace("-", "_");
+
+                String id = apiService.startDownload(torrentFile, pieceAlgo, peerAlgo, downloadDir);
+                log("Download started: " + torrentFile.getName() + " → " + downloadDir + " (ID: " + id + ")");
                 SwingUtilities.invokeLater(this::refreshStatus);
             } catch (Exception ex) {
                 log("ERROR: Failed to start download: " + ex.getMessage());
@@ -326,6 +364,29 @@ public class TorrentClientGUI extends JFrame {
             try {
                 List<ApiService.TorrentStatus> statuses = apiService.getStatus();
                 SwingUtilities.invokeLater(() -> updateTable(statuses));
+
+                // Poll logs for each active download
+                for (ApiService.TorrentStatus status : statuses) {
+                    if ("Running".equals(status.state) || "Error".equals(status.state) || "Completed".equals(status.state)) {
+                        int since = logSeqTracker.getOrDefault(status.id, 0);
+                        try {
+                            JSONArray logs = apiService.getLogs(status.id, since);
+                            if (logs.length() > 0) {
+                                int maxSeq = since;
+                                for (int i = 0; i < logs.length(); i++) {
+                                    JSONObject entry = logs.getJSONObject(i);
+                                    int seq = entry.getInt("seq");
+                                    String msg = entry.getString("msg");
+                                    if (seq > maxSeq) maxSeq = seq;
+                                    SwingUtilities.invokeLater(() -> log("[engine] " + msg));
+                                }
+                                logSeqTracker.put(status.id, maxSeq);
+                            }
+                        } catch (Exception ex) {
+                            // Ignore log polling errors
+                        }
+                    }
+                }
             } catch (Exception e) {
                 // Server might not be running yet
             }
@@ -337,6 +398,19 @@ public class TorrentClientGUI extends JFrame {
         int selectedRow = downloadTable.getSelectedRow();
         String selectedId = getSelectedTorrentId();
 
+        // Detect completion transitions and show notification
+        for (ApiService.TorrentStatus status : statuses) {
+            String prevState = previousStates.get(status.id);
+            if ("Completed".equals(status.state) && !"Completed".equals(prevState)) {
+                String msg = status.name + "\nSaved to: " + status.downloadPath;
+                SwingUtilities.invokeLater(() ->
+                    JOptionPane.showMessageDialog(this, msg, "Download Complete",
+                            JOptionPane.INFORMATION_MESSAGE)
+                );
+            }
+            previousStates.put(status.id, status.state);
+        }
+
         tableModel.setRowCount(0);
         for (ApiService.TorrentStatus status : statuses) {
             tableModel.addRow(new Object[]{
@@ -346,6 +420,7 @@ public class TorrentClientGUI extends JFrame {
                     formatSpeed(status.downloadSpeed),
                     String.valueOf(status.connectedPeers),
                     status.state,
+                    status.downloadPath,
                     status.id
             });
         }

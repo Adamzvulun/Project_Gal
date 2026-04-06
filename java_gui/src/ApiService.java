@@ -40,6 +40,7 @@ public class ApiService {
         public double elapsedTime;
         public String pieceAlgorithm;
         public String peerAlgorithm;
+        public String downloadPath;
 
         public static TorrentStatus fromJson(JSONObject json) {
             TorrentStatus status = new TorrentStatus();
@@ -56,6 +57,7 @@ public class ApiService {
             status.elapsedTime = json.optDouble("elapsed_time", 0.0);
             status.pieceAlgorithm = json.optString("piece_algorithm", "");
             status.peerAlgorithm = json.optString("peer_algorithm", "");
+            status.downloadPath = json.optString("download_path", "");
             return status;
         }
 
@@ -94,20 +96,22 @@ public class ApiService {
      * @throws ApiException     If the server returns an error.
      */
     public String startDownload(File torrentFile) throws IOException, ApiException {
-        return startDownload(torrentFile, "rarest_first", "tit_for_tat");
+        return startDownload(torrentFile, "rarest_first", "tit_for_tat", null);
     }
 
     /**
-     * Start a new download with specific algorithms.
+     * Start a new download with specific algorithms and download directory.
      *
      * @param torrentFile    The .torrent file.
      * @param pieceAlgorithm Piece selection algorithm ("rarest_first" or "random").
      * @param peerAlgorithm  Peer selection algorithm ("tit_for_tat" or "round_robin").
+     * @param downloadDir    Directory to save the downloaded file (null for server default).
      * @return The torrent ID.
      * @throws IOException  If there is a network or file error.
      * @throws ApiException If the server returns an error.
      */
-    public String startDownload(File torrentFile, String pieceAlgorithm, String peerAlgorithm)
+    public String startDownload(File torrentFile, String pieceAlgorithm, String peerAlgorithm,
+                                String downloadDir)
             throws IOException, ApiException {
         // Build multipart request
         String boundary = "----FormBoundary" + System.currentTimeMillis();
@@ -127,8 +131,16 @@ public class ApiService {
                 pieceAlgorithm +
                 "\r\n--" + boundary + "\r\n" +
                 "Content-Disposition: form-data; name=\"peer_algorithm\"\r\n\r\n" +
-                peerAlgorithm +
-                "\r\n--" + boundary + "--\r\n";
+                peerAlgorithm;
+
+        // Add download directory if specified
+        if (downloadDir != null && !downloadDir.isEmpty()) {
+            algorithmPart += "\r\n--" + boundary + "\r\n" +
+                    "Content-Disposition: form-data; name=\"download_dir\"\r\n\r\n" +
+                    downloadDir;
+        }
+
+        algorithmPart += "\r\n--" + boundary + "--\r\n";
 
         byte[] footerBytes = algorithmPart.getBytes();
 
@@ -284,6 +296,28 @@ public class ApiService {
         HttpResponse<String> response = sendRequest(request);
         checkResponse(response, 200);
         return response.body();
+    }
+
+    /**
+     * Get live log messages from a running download.
+     *
+     * @param torrentId The torrent ID.
+     * @param sinceSeq  Only return logs with seq greater than this.
+     * @return JSONArray of log entries.
+     * @throws IOException  If there is a network error.
+     * @throws ApiException If the server returns an error.
+     */
+    public JSONArray getLogs(String torrentId, int sinceSeq) throws IOException, ApiException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/torrents/" + torrentId + "/logs?since=" + sinceSeq))
+                .GET()
+                .build();
+
+        HttpResponse<String> response = sendRequest(request);
+        checkResponse(response, 200);
+
+        JSONObject json = new JSONObject(response.body());
+        return json.getJSONArray("logs");
     }
 
     /**
