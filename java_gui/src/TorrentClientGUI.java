@@ -344,7 +344,7 @@ public class TorrentClientGUI extends JFrame {
                 JSONArray arr = new JSONArray(historyJson);
 
                 String[] cols = {"Name", "Size", "Status", "Avg Speed",
-                        "Peak Speed", "Time", "Piece Algo", "Peer Algo"};
+                        "Peak Speed", "Time", "Piece Algo", "Peer Algo", "Choke Cycles"};
                 DefaultTableModel model = new DefaultTableModel(cols, 0) {
                     @Override public boolean isCellEditable(int r, int c) { return false; }
                 };
@@ -359,13 +359,14 @@ public class TorrentClientGUI extends JFrame {
                             formatSpeed(o.optDouble("peak_speed", 0)),
                             formatDuration(o.optInt("total_time_seconds", 0)),
                             friendlyAlgo(o.optString("piece_algorithm", "")),
-                            friendlyAlgo(o.optString("peer_algorithm", ""))
+                            friendlyAlgo(o.optString("peer_algorithm", "")),
+                            o.optInt("choke_cycles", 0)
                     });
                 }
 
                 SwingUtilities.invokeLater(() -> {
                     JDialog dlg = new JDialog(this, "Download History", false);
-                    dlg.setSize(720, 380);
+                    dlg.setSize(820, 380);
                     dlg.setLocationRelativeTo(this);
                     dlg.setLayout(new BorderLayout(6, 6));
 
@@ -439,7 +440,7 @@ public class TorrentClientGUI extends JFrame {
             } catch (Exception e) {
                 // Ignore refresh errors
             }
-        }, 1, 1, TimeUnit.SECONDS);
+        }, 500, 500, TimeUnit.MILLISECONDS);
     }
 
     private void refreshStatus() {

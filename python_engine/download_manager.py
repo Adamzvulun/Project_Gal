@@ -135,6 +135,9 @@ class Download:
         # Round-robin state
         self._rr_index = 0
 
+        # Guard to ensure completion logic runs exactly once
+        self._completion_handled = False
+
         # Live log buffer (last 200 messages for GUI polling)
         self._log_buffer = collections.deque(maxlen=200)
         self._log_counter = 0
@@ -390,6 +393,10 @@ class Download:
                     asyncio.create_task(self._broadcast_have(piece_idx))
                     if self._on_progress:
                         self._on_progress(self)
+                    # Set state immediately on completion so GUI sees it on next poll
+                    if self.piece_manager.is_complete:
+                        self.state = DownloadState.COMPLETED
+                        self.stats.end_time = time.time()
                     # Immediately try to give this peer new work
                     await self._request_from_peer(peer_key, conn)
                 else:
@@ -649,8 +656,13 @@ class Download:
 
     async def _complete_download(self):
         """Handle download completion."""
+        if self._completion_handled:
+            return
+        self._completion_handled = True
+
         self.state = DownloadState.COMPLETED
-        self.stats.end_time = time.time()
+        if self.stats.end_time is None:
+            self.stats.end_time = time.time()
 
         download_path = os.path.join(self.download_dir, self.torrent.name)
         self._log(
