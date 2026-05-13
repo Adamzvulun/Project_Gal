@@ -115,4 +115,64 @@
 
 ---
 
+## Fig-05 – תרשים Context (Top-Down רמה 0)
+
+- **פרק**: 11 (ארכיטקטורה) — סעיף 11.1.1.
+- **מיקום בקובץ**: `11-architecture.md`, בסעיף 11.1.1.
+- **סוג**: Context Diagram (UML / DFD level 0).
+- **תיאור מפורט**: תיבה שחורה יחידה במרכז עם הכותרת *"BitTorrent
+  Distributed File Sharing System"*. סביבה ארבעה שחקנים חיצוניים,
+  עם חצים דו-כיווניים אליה: (1) `User` משמאל למעלה — אינטראקציה
+  עם GUI; (2) `Tracker` (סמל שרת) מימין למעלה — תקשורת HTTP
+  announce/response; (3) קבוצת `Peers` (`Peer 1`, `Peer 2`, `Peer
+  N`) מתחת — תקשורת TCP/BEP-3. כל חץ עם תווית קצרה
+  (`HTTP`, `TCP`, `User Actions`).
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-06 – תרשים Top-Down רמה 2 (תת-מערכות)
+
+- **פרק**: 11 (ארכיטקטורה) — סעיף 11.1.3.
+- **מיקום בקובץ**: `11-architecture.md`, בסעיף 11.1.3.
+- **סוג**: תרשים ארכיטקטורה מפורט.
+- **תיאור מפורט**: שני מלבנים גדולים זה לצד זה, המייצגים את שני
+  התהליכים:
+  - **Java GUI Process** (שמאל): בתוכו תיבה ראשית
+    `TorrentClientGUI (Main)`; שתי תיבות תחת — `ApiService`
+    (HttpClient) ו-`AlgorithmStatsDialog` (Modal).
+  - **Python Engine Process** (ימין): שלוש שורות תיבות:
+    שורה 1 — `Flask REST API Server`; שורה 2 — `DownloadManager`
+    (במרכז) המקושר אל `PieceManager`, `PeerConnection`,
+    `TrackerClient`; שורה 3 — `Security`, `TorrentMetadata` (משמאל)
+    ו-`JSON state files`, `SQLite (history.db)` (מימין).
+  - חץ דו-כיווני באמצע בין שני התהליכים, עם תווית
+    `REST/JSON over HTTP — localhost:5000`.
+  - חצים יוצאים מ-`TrackerClient` ו-`PeerConnection` החוצה לקצוות
+    התרשים (מסומנים `→ Tracker` ו-`→ Peers in Swarm`).
+- **סטטוס**: דרוש. ניתן להתבסס על התרשים בעמ' 8 של הצעת הפרויקט,
+  אך בגרסה מורחבת לפי תוכן הסעיף.
+
+---
+
+## Fig-07 – תרשים ארכיטקטורת רשת
+
+- **פרק**: 11 (ארכיטקטורה) — סעיף 11.4.2.
+- **מיקום בקובץ**: `11-architecture.md`, בסעיף 11.4.2.
+- **סוג**: תרשים זרימת רשת.
+- **תיאור מפורט**: שלוש שכבות תקשורת מוצגות בשלושה צבעים שונים:
+  - **שכבה ירוקה (Local IPC)**: חץ דו-כיווני בין תיבת `Java GUI`
+    לתיבת `Python Engine`, עם תווית `HTTP/JSON · localhost:5000`.
+  - **שכבה כחולה (HTTP Tracker)**: חץ דו-כיווני בין `Python
+    Engine` לתיבה חיצונית `Tracker (HTTP/HTTPS)`, עם תווית
+    `Bencode response · port 80/443`.
+  - **שכבה כתומה (Peer Wire Protocol)**: חץ מ-`Python Engine`
+    היוצא לקבוצה של ~5 תיבות `Peer 1..5` (מיוצגות כ-swarm), עם
+    תווית `TCP/BEP-3 · port 6881 + dynamic`.
+  - בתחתית התרשים, מקרא הסבר על כל שכבה: פרוטוקול, רוחב פס
+    טיפוסי, ודרישות אבטחה.
+- **סטטוס**: דרוש.
+
+---
+
 <!-- פריטים נוספים יתווספו עם התקדמות כתיבת הפרקים -->
