@@ -134,36 +134,50 @@ PeerConnection
   - Toolbar עם כפתורים: Add Torrent, Pause, Resume, Cancel,
     History, ו-ComboBox-ים לבחירת אלגוריתמים.
   - Split pane שמתחתיו `JTextArea` ללוגים בזמן אמת.
-  - `ScheduledExecutorService` המבצע polling כל 2 שניות.
+  - `ScheduledExecutorService` המבצע polling כל 500ms.
   - חלון `AlgorithmStatsDialog` מודאלי עם graphs ב-Java2D.
 
 קטע קוד קצר המציג את הקמת ה-polling:
 
 ```java
 // java_gui/src/TorrentClientGUI.java (קצור)
-ScheduledExecutorService scheduler =
-    Executors.newSingleThreadScheduledExecutor();
-scheduler.scheduleAtFixedRate(() -> {
-    try {
-        List<TorrentStatus> all = apiService.getStatus();
-        SwingUtilities.invokeLater(() -> updateTable(all));
-        for (TorrentStatus s : all) {
-            int since = logSeqTracker.getOrDefault(s.id, 0);
-            JSONArray logs = apiService.getLogs(s.id, since);
-            SwingUtilities.invokeLater(() -> appendLogs(s.id, logs));
+private void startStatusUpdater() {
+    scheduler.scheduleAtFixedRate(() -> {
+        try {
+            SwingUtilities.invokeLater(this::refreshStatus);
+        } catch (Exception e) {
+            // Ignore refresh errors
         }
-    } catch (Exception e) {
-        // graceful — server may be starting
-    }
-}, 0, 2, TimeUnit.SECONDS);
+    }, 500, 500, TimeUnit.MILLISECONDS);
+}
+
+private void refreshStatus() {
+    new Thread(() -> {
+        try {
+            List<ApiService.TorrentStatus> statuses = apiService.getStatus();
+            SwingUtilities.invokeLater(() -> updateTable(statuses));
+            for (ApiService.TorrentStatus s : statuses) {
+                int since = logSeqTracker.getOrDefault(s.id, 0);
+                JSONArray logs = apiService.getLogs(s.id, since);
+                // ... appendLogs via SwingUtilities.invokeLater
+            }
+        } catch (Exception e) {
+            // Server might not be running yet
+        }
+    }).start();
+}
 ```
 
-הקטע מציג את הפולינג של הסטטוס בשרשור נפרד, עם `invokeLater()`
-לעדכון ה-EDT (Event Dispatch Thread של Swing).
+הקטע מציג את העיצוב הדו-שלבי: ה-scheduler רץ ב-EDT (דרך
+`invokeLater`) ובכל טיק יוצר Thread חדש שמבצע את קריאות ה-HTTP
+החוסמות, ואז חוזר ל-EDT דרך `invokeLater` כדי לעדכן את הטבלה
+והלוגים.
 
 ### 11.2.2 שרת יישום (Application Server) — Python Engine
 
-- **נקודת כניסה**: `python_engine/api_server.py`
+- **נקודת כניסה**: `python -m python_engine.api_server` (קריאת
+  `run_server()` ב-`python_engine/api_server.py`, המאתחל את ה-DB,
+  מפעיל את ה-event loop ברקע ומריץ את Flask על `127.0.0.1:5000`).
 - **תפקיד**: ביצוע כל הלוגיקה של BitTorrent.
 - **טכנולוגיה**: Python 3.8+ + asyncio + Flask.
 - **רכיבים פנימיים** (פירוט בפרק 11.2.4):
@@ -204,43 +218,63 @@ scheduler.scheduleAtFixedRate(() -> {
 הפרזיסטנטית מורכבת משני רכיבים:
 
 **(א) JSON state files**:
-- מיקום: `data/state/<torrent_id>.json`
+- מיקום: `data/state/<torrent_id>.json` (`state_dir` ב-`DownloadManager`).
 - שימוש: שחזור מצב לאחר סגירה.
-- ניהול: `download_manager.py` (`_save_state()`, `_load_state()`).
+- ניהול: `download_manager.py` — `Download._save_state()` נקרא
+  בעת השלמת piece, pause ו-cancel; טעינה (כאשר תמומש בעתיד)
+  תתבצע על בסיס אותו פורמט JSON.
 
 **(ב) SQLite database**:
 - מיקום: `data/history.db`.
-- ניהול: `api_server.py` מכין את ה-schema בעת startup.
+- ניהול: `api_server.py` (`init_database()`) מכין את ה-schema
+  בעת startup; שכבת ה-access מסונכרנת בעזרת `_db_lock` (mutex
+  ברמת התהליך) כדי למנוע race conditions בין ה-Flask thread
+  לקריאות מה-event loop.
 - טבלאות:
-  - `torrents` (`id`, `name`, `size`, `state`, `started_at`,
-    `completed_at`, `download_path`).
-  - `performance_stats` (`torrent_id`, `avg_speed`, `peak_speed`,
-    `total_peers_seen`, ...).
-  - `algorithm_stats` (`torrent_id`, `piece_selection_distribution`,
-    `choke_cycles`, ...).
-  - `events` (`id`, `torrent_id`, `event_type`, `description`,
-    `timestamp`).
+  - `torrents` (`id`, `info_hash`, `name`, `size`, `started_at`,
+    `completed_at`, `total_time_seconds`, `final_status`,
+    `piece_algorithm`, `peer_algorithm`).
+  - `performance_stats` (`id`, `torrent_id`, `avg_speed`,
+    `peak_speed`, `avg_peers`, `choke_cycles`).
+  - `algorithm_stats` (`id`, `torrent_id`, `piece_index`,
+    `selected_as_rarest`, `choke_count`, `unchoke_count`).
+  - `events` (`id`, `torrent_id`, `timestamp`, `event_type`,
+    `description`).
 
 קטע קוד של יצירת הסכמה:
 
 ```python
 # python_engine/api_server.py (קצור)
-def _init_db():
+def init_database():
     conn = sqlite3.connect(DB_PATH)
-    conn.execute('''
+    cursor = conn.cursor()
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS torrents (
             id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            size INTEGER NOT NULL,
-            state TEXT NOT NULL,
-            started_at REAL,
-            completed_at REAL,
-            download_path TEXT
-        )''')
-    conn.execute('''CREATE TABLE IF NOT EXISTS events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        torrent_id TEXT, event_type TEXT,
-        description TEXT, timestamp REAL)''')
+            info_hash TEXT,
+            name TEXT,
+            size INTEGER,
+            started_at DATETIME,
+            completed_at DATETIME,
+            total_time_seconds INTEGER,
+            final_status TEXT
+        )""")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            torrent_id TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            event_type TEXT,
+            description TEXT,
+            FOREIGN KEY (torrent_id) REFERENCES torrents(id)
+        )""")
+    # Migration: add algorithm columns when upgrading older DBs
+    for col, col_def in [("piece_algorithm", "TEXT DEFAULT 'rarest_first'"),
+                         ("peer_algorithm",  "TEXT DEFAULT 'tit_for_tat'")]:
+        try:
+            cursor.execute(f"ALTER TABLE torrents ADD COLUMN {col} {col_def}")
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     conn.close()
 ```
@@ -263,29 +297,36 @@ def _init_db():
 שני התהליכים נוצרים ע"י `start.sh` / `start.bat`:
 
 ```bash
-# start.sh (קצור)
-# Launch Python engine in background
-python -m python_engine.api_server &
-PYTHON_PID=$!
+# start.sh (קצור — חלק ה-Launch בלבד)
+# Launch Python API server in background
+$PYTHON -m python_engine.api_server &
+API_PID=$!
 
 # Wait for the server to be ready
 sleep 2
 
-# Launch Java GUI in foreground
-java -cp "java_gui/build:java_gui/lib/json.jar" TorrentClientGUI
+# Cleanup function — kills the engine when the GUI exits
+cleanup() {
+    kill $API_PID 2>/dev/null
+    wait $API_PID 2>/dev/null
+}
+trap cleanup EXIT INT TERM
 
-# When GUI closes, kill the engine
-kill $PYTHON_PID
+# Run Java GUI in foreground (blocks until window closes)
+java -cp "java_gui/build:java_gui/lib/json.jar" TorrentClientGUI
 ```
 
 ### 11.3.2 מודל ה-Threading בתוך Python Engine
 
 תהליך ה-Python אינו single-threaded. הוא מחזיק שלושה סוגי שרשורים:
 
-**Thread 1: Flask Main Thread**
-- ממוקם ב-main.
-- מטפל בבקשות HTTP מ-Java GUI.
-- בלוקינג בעת ה-`request.start_response()`.
+**Thread 1: Flask Main Thread (+ Werkzeug worker threads)**
+- שרת ה-development של Flask (Werkzeug) שמופעל ב-
+  `app.run(host='127.0.0.1', port=5000)` מטפל בכל בקשה בשרשור
+  עצמאי (`threaded=True` כברירת מחדל), כך שכל קריאת REST מ-
+  Java GUI נחסמת רק בתוך השרשור שלה ולא חוסמת אחרות.
+- הלוגיקה האסינכרונית נקראת מהשרשור הזה דרך גשר `_run_async`
+  שמעביר את הקואורוטינה ל-event loop הייעודי וממתין לתוצאה.
 
 **Thread 2: Asyncio Event Loop Thread (daemon)**
 - מופעל בעת startup ב-`api_server.py`.
@@ -305,17 +346,26 @@ kill $PYTHON_PID
 # python_engine/api_server.py (קצור)
 import asyncio, threading
 
-_loop = asyncio.new_event_loop()
+_loop: Optional[asyncio.AbstractEventLoop] = None
+_loop_thread: Optional[threading.Thread] = None
 
-def _start_loop():
-    asyncio.set_event_loop(_loop)
-    _loop.run_forever()
+def _start_event_loop():
+    global _loop, _loop_thread
+    if _loop is not None and _loop.is_running():
+        return
+    _loop = asyncio.new_event_loop()
 
-_loop_thread = threading.Thread(target=_start_loop, daemon=True)
-_loop_thread.start()
+    def _run_loop():
+        asyncio.set_event_loop(_loop)
+        _loop.run_forever()
 
-def _run_async(coro, timeout: float = 60.0):
+    _loop_thread = threading.Thread(target=_run_loop, daemon=True)
+    _loop_thread.start()
+
+def _run_async(coro, timeout=60):
     """Bridge: call asyncio coroutine from Flask thread."""
+    if _loop is None or not _loop.is_running():
+        _start_event_loop()
     future = asyncio.run_coroutine_threadsafe(coro, _loop)
     return future.result(timeout=timeout)
 ```
@@ -337,9 +387,10 @@ loop דרך `_run_async`.
 
 **Thread 3: ScheduledExecutorService**
 - שרשור יחיד (`newSingleThreadScheduledExecutor`).
-- מבצע polling של ה-API כל 2 שניות.
-- מכיוון שלא ב-EDT, כל עדכון UI שלו עובר דרך
-  `SwingUtilities.invokeLater`.
+- מבצע polling של ה-API כל 500ms.
+- ה-task המתוזמן רק מתזמן את `refreshStatus` על ה-EDT דרך
+  `SwingUtilities.invokeLater`; קריאות ה-HTTP החוסמות בפועל
+  מבוצעות ב-`Thread` חדש שנוצר בכל ריענון, כדי שה-EDT לא ייחסם.
 
 ### 11.3.4 מודל ה-Asyncio Event Loop
 
@@ -423,8 +474,8 @@ loop דרך `_run_async`.
 
 | פורט | שימוש | כיוון |
 |---|---|---|
-| `5000` | Flask REST API (localhost) | נכנס מ-GUI |
-| `6881` | BitTorrent peer port | נכנס מ-peers (אם NAT מאפשר) |
+| `5000` | Flask REST API (`127.0.0.1`) | נכנס מ-GUI מקומי בלבד |
+| `6881` | BitTorrent peer port המוצהר ל-tracker | נכנס תיאורטי בלבד — אין מימוש *listen server* בגרסה זו |
 | `80/443` | HTTP Tracker | יוצא ל-trackers |
 | Dynamic | Outgoing TCP to peers | יוצא ל-peers |
 
@@ -451,62 +502,76 @@ STUN). במערכת זו, הגישה: "תרומה ל-swarm כאשר אפשרי, 
 
 | מתודה | Endpoint | תיאור | פרמטרים |
 |---|---|---|---|
-| `POST` | `/torrents` | התחלת הורדה | multipart: `file`, `piece_algorithm`, `peer_algorithm`, `download_dir` |
+| `POST` | `/torrents` | התחלת הורדה | multipart: `torrent_file`; form/JSON: `piece_algorithm`, `peer_algorithm`, `download_dir` (JSON חלופי: `torrent_path`) |
 | `GET` | `/torrents` | רשימת כל ההורדות | — |
 | `GET` | `/torrents/<id>` | סטטוס הורדה ספציפית | path: `id` |
 | `POST` | `/torrents/<id>/pause` | עצירה | path: `id` |
 | `POST` | `/torrents/<id>/resume` | חידוש | path: `id` |
 | `POST` | `/torrents/<id>/cancel` | ביטול | path: `id` |
 | `GET` | `/torrents/<id>/logs?since=N` | log polling | query: `since` (sequence) |
-| `GET` | `/algorithm-stats/<id>` | סטטיסטיקות אלגוריתמים | — |
+| `GET` | `/algorithm-stats/<id>` | סטטיסטיקות אלגוריתמים | path: `id` |
+| `GET` | `/stats-summary` | טבלת השוואת אלגוריתמים מצרפית | — |
 | `GET` | `/history` | היסטוריית הורדות | — |
-| `POST` | `/history/clear` | ניקוי היסטוריה | — |
-| `GET` | `/events?limit=N` | אירועים | query: `limit` |
+| `DELETE` | `/history` | ניקוי היסטוריה | — |
+| `GET` | `/events?limit=N` | אירועים | query: `limit`, `torrent_id` (אופציונלי) |
 | `GET` | `/health` | בדיקת חיים | — |
 
 ### 11.5.2 פורמט תגובות
 
-תגובה טיפוסית של `GET /torrents/<id>`:
+תגובה טיפוסית של `GET /torrents/<id>` (התוצאה של `Download.get_status()`):
 
 ```json
 {
   "id": "a1b2c3d4",
   "name": "ubuntu-22.04.iso",
   "size": 4294967296,
+  "progress": 25.0,
+  "download_speed": 1048576.0,
+  "upload_speed": 0.0,
+  "connected_peers": 24,
+  "state": "Running",
   "downloaded": 1073741824,
-  "progress": 0.25,
-  "state": "RUNNING",
-  "download_rate": 1048576,
-  "peers_count": 24,
+  "uploaded": 0,
+  "elapsed_time": 142.7,
   "piece_algorithm": "rarest_first",
   "peer_algorithm": "tit_for_tat",
-  "download_path": "/home/user/Downloads"
+  "download_path": "/home/user/Downloads/ubuntu-22.04.iso"
 }
 ```
+
+הערה: `progress` מוחזר באחוזים (0–100) ולא כשבר; `state` הוא
+ערך ה-`DownloadState` enum (`Queued`/`Running`/`Paused`/
+`Completed`/`Cancelled`/`Error`); `download_speed` ו-
+`upload_speed` ב-bytes/sec.
 
 ### 11.5.3 קטע קוד של endpoint
 
 ```python
 # python_engine/api_server.py (קצור)
 @app.route('/torrents/<torrent_id>', methods=['GET'])
-def get_torrent(torrent_id: str):
-    download = manager.get_download(torrent_id)
-    if download is None:
-        return jsonify({"error": "not found"}), 404
-    return jsonify(download.get_status())
+def get_torrent_status(torrent_id: str):
+    manager = get_manager()
+    status = manager.get_download_status(torrent_id)
+    if status is None:
+        return jsonify({"error": "Torrent not found"}), 404
+    return jsonify(status)
 
 @app.route('/torrents/<torrent_id>/pause', methods=['POST'])
-def pause_torrent(torrent_id: str):
+def pause_download(torrent_id: str):
+    manager = get_manager()
     download = manager.get_download(torrent_id)
     if download is None:
-        return jsonify({"error": "not found"}), 404
-    _run_async(download.pause())
-    return jsonify({"status": "paused"})
+        return jsonify({"error": "Torrent not found"}), 404
+    _run_async(manager.pause_download(torrent_id))
+    save_torrent_to_db(download)
+    log_event_to_db(torrent_id, "download_paused", "Download paused")
+    return jsonify({"id": torrent_id, "state": "Paused"})
 ```
 
-הקטע מציג את הפשטות של ה-handlers: כל handler מבצע lookup,
-שולח את הפעולה ל-event loop דרך `_run_async`, ומחזיר JSON. הקטע
-המלא של כל ה-API ראוי לעיון בנספח א.1.
+הקטע מציג את הדפוס האחיד של ה-handlers: lookup דרך
+`get_manager()`, גישור ל-event loop האסינכרוני דרך `_run_async`,
+ופעולות לוואי (שמירה ל-DB ולוג אירועים) לפני החזרת ה-JSON.
+הקטע המלא של כל ה-API ראוי לעיון בנספח א.1.
 
 ### 11.5.4 שמירת זהויות (Identity & Idempotency)
 
@@ -541,22 +606,26 @@ def pause_torrent(torrent_id: str):
 
 ```python
 # python_engine/tracker_client.py (קצור)
-async def announce(self, event: str = '') -> TrackerResponse:
+async def announce(self, event: Optional[str] = None,
+                   uploaded: Optional[int] = None,
+                   downloaded: Optional[int] = None,
+                   left: Optional[int] = None) -> TrackerResponse:
     params = {
         'info_hash': self.info_hash,
         'peer_id': self.peer_id,
         'port': self.port,
-        'uploaded': self._uploaded,
-        'downloaded': self._downloaded,
-        'left': self._left,
+        'uploaded': uploaded if uploaded is not None else self.uploaded,
+        'downloaded': downloaded if downloaded is not None else self.downloaded,
+        'left': left if left is not None else self.left,
         'compact': 1,
     }
     if event:
         params['event'] = event
-    url = self._build_url(params)  # URL-encoded
-    async with self.session.get(url) as resp:
-        data = await resp.read()
-    decoded = bencode.decode(data)
+    url = self._build_announce_url(params)        # URL-encoded
+    session = await self._get_session()
+    async with session.get(url) as resp:
+        raw = await resp.read()
+    decoded = bencode.decode(raw)
     return TrackerResponse(decoded)
 ```
 
@@ -572,27 +641,40 @@ async def announce(self, event: str = '') -> TrackerResponse:
 
 ```python
 # python_engine/peer_connection.py (קצור)
-async def _send_handshake(self):
-    pstr = b'BitTorrent protocol'
-    handshake = bytes([len(pstr)]) + pstr + b'\x00' * 8 \
-                + self.info_hash + self.peer_id
-    self.writer.write(handshake)
-    await self.writer.drain()
+PROTOCOL_STRING = b'BitTorrent protocol'
+PROTOCOL_STRING_LEN = len(PROTOCOL_STRING)
+HANDSHAKE_LEN = 1 + PROTOCOL_STRING_LEN + 8 + 20 + 20  # 68 bytes
 
-async def _receive_handshake(self) -> bool:
+async def _send_handshake(self):
+    handshake = (
+        bytes([PROTOCOL_STRING_LEN]) +
+        PROTOCOL_STRING +
+        b'\x00' * 8 +                # Reserved bytes
+        self.info_hash +
+        self.our_peer_id
+    )
+    self._writer.write(handshake)
+    await self._writer.drain()
+
+async def _receive_handshake(self):
     data = await asyncio.wait_for(
-        self.reader.readexactly(68), timeout=CONNECTION_TIMEOUT)
+        self._reader.readexactly(HANDSHAKE_LEN),
+        timeout=CONNECTION_TIMEOUT)
     pstrlen = data[0]
-    if pstrlen != 19 or data[1:20] != b'BitTorrent protocol':
-        return False
-    if data[28:48] != self.info_hash:
-        return False
-    self.remote_peer_id = data[48:68]
-    return True
+    if pstrlen != PROTOCOL_STRING_LEN:
+        raise PeerConnectionError(f"Invalid protocol length: {pstrlen}")
+    if data[1:1 + pstrlen] != PROTOCOL_STRING:
+        raise PeerConnectionError("Invalid protocol string")
+    received_info_hash = data[1 + pstrlen + 8: 1 + pstrlen + 8 + 20]
+    self.remote_peer_id = data[1 + pstrlen + 8 + 20: 1 + pstrlen + 8 + 40]
+    if received_info_hash != self.info_hash:
+        raise PeerConnectionError("Info hash mismatch during handshake")
 ```
 
-הקטע מציג את מבנה ה-handshake המדויק. אסור לסטות ביט אחד —
-כל סטייה תוביל לדחיית החיבור ע"י ה-peer הרחוק.
+הקטע מציג את מבנה ה-handshake המדויק (68 בתים). אסור לסטות
+ביט אחד — כל סטייה תוביל ל-`PeerConnectionError` ולסגירת
+החיבור (בניגוד לדפוסים אחרים שמחזירים `bool`, המימוש שלנו זורק
+חריגה מנומקת כדי שניתן יהיה לתעד את סיבת הכשל ב-logger).
 
 ### 11.6.4 השוואת הפרוטוקולים
 
@@ -623,20 +705,21 @@ async def _receive_handshake(self) -> bool:
 
 ```java
 // java_gui/src/ApiService.java (קצור)
-public List<TorrentStatus> getStatus() throws Exception {
+public List<TorrentStatus> getStatus() throws IOException, ApiException {
     HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/torrents"))
-        .GET()
-        .timeout(Duration.ofSeconds(10))
-        .build();
-    HttpResponse<String> response = client.send(
-        request, HttpResponse.BodyHandlers.ofString());
-    JSONArray arr = new JSONArray(response.body());
-    List<TorrentStatus> result = new ArrayList<>();
-    for (int i = 0; i < arr.length(); i++) {
-        result.add(TorrentStatus.fromJson(arr.getJSONObject(i)));
+            .uri(URI.create(baseUrl + "/torrents"))
+            .GET()
+            .build();
+
+    HttpResponse<String> response = sendRequest(request);
+    checkResponse(response, 200);
+
+    JSONArray jsonArray = new JSONArray(response.body());
+    List<TorrentStatus> statuses = new ArrayList<>();
+    for (int i = 0; i < jsonArray.length(); i++) {
+        statuses.add(TorrentStatus.fromJson(jsonArray.getJSONObject(i)));
     }
-    return result;
+    return statuses;
 }
 ```
 
@@ -703,7 +786,7 @@ loop. הפתרונות לאתגרים אלה תוארו בפרקים 4.3 (קונ
 Processes, Subsystems, Internal Classes); תיאור מפורט של 4
 קטגוריות רכיבים (לקוח, שרת יישום, שרתי תקשורת, DB); מודל
 מקיף של תהליכים ושרשורים כולל IPC; ארכיטקטורת רשת בשלוש שכבות
-תקשורת עם פירוט פורטים ו-NAT; תיאור 12 endpoints של ה-REST API
+תקשורת עם פירוט פורטים ו-NAT; תיאור 13 endpoints של ה-REST API
 עם דוגמאות; פירוט 3 פרוטוקולי תקשורת (REST, HTTP Tracker, Peer
 Wire Protocol) עם קטעי קוד; ודיון בדפוס שרת-לקוח הכפול
 שמאפיין את המערכת. הפרק נחתם בטבלת קשרים מקיפה.
