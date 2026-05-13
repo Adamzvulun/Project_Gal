@@ -1,6 +1,286 @@
 {
-  "project": "Project Gal - Final Project Book",
-  "status": "awaiting-guidelines",
-  "note": "This manifest will be populated after reading the guidelines (מחוון) from guidelines/ directory.",
-  "chapters": []
+  "project": {
+    "name": "מערכת שיתוף קבצים מבוזרת בסגנון BitTorrent",
+    "student": "אדם זבולון",
+    "student_id": "329441273",
+    "college": "מקיף ה' דרכא אשקלון",
+    "institution_code": "644450",
+    "advisor": "גל בראון",
+    "exam_code": "714918",
+    "year": "תשפ״ו",
+    "submission_date": "04.01.2026"
+  },
+  "rubric_category_primary": "מערכות הפעלה / רשתות מחשבים / תקשורת נתונים / אבטחת מידע",
+  "rubric_category_secondary": "פתרון בעיה אלגוריתמית בטכנולוגיות הנדסה מתקדמות",
+  "rubric_compliance": {
+    "two_programming_languages": "Python (engine) + Java (GUI) – integrated via local REST API",
+    "compiled_language": "Java (JDK 11+)",
+    "non_trivial_algorithms": ["rarest-first piece selection", "Tit-for-Tat choke/unchoke", "asyncio event-driven pipeline"],
+    "layer_separation": ["GUI (Java Swing)", "REST API (Flask)", "Business Logic (DownloadManager, PieceManager)", "Network (PeerConnection, TrackerClient)", "Persistence (JSON + SQLite)"],
+    "core_logic_implemented_not_via_api": true,
+    "security_aspects": ["SHA-1 piece verification", "peer reputation & banning", "protocol validation", "message size limits", "connection/request timeouts"]
+  },
+  "status": "ready-for-chapter-writing",
+  "chapters": [
+    {
+      "number": 1,
+      "id": "01-approved-proposal",
+      "file": "01-approved-proposal.md",
+      "title": "הצעת הפרויקט שאושרה על ידי משרד החינוך",
+      "required_sections": ["שילוב מסמך ההצעה החתום"],
+      "source_files": ["guidelines/הצעת פרוייקט - אדם זבולון 329441273 V2.2.pdf (already in repo root, will be referenced)", "/הצעת פרוייקט - אדם זבולון 329441273 V2.2.pdf"],
+      "information_sufficiency": "sufficient",
+      "notes": "פרק זה הוא בעיקר שילוב של מסמך ההצעה. בפועל יוטמע כסריקה / טקסט מלא בספר. לצורך הספר ב-Markdown נסכם את התוכן ונציין שיש לשלב את ה-PDF החתום."
+    },
+    {
+      "number": 2,
+      "id": "02-abstract-introduction",
+      "file": "02-abstract-introduction.md",
+      "title": "תקציר / מבוא",
+      "required_sections": ["2.1 הרקע לפרויקט", "2.2 תהליך המחקר", "2.3 סקירת ספרות", "2.4 אתגרים מרכזיים", "2.4.1 הבעיה", "2.4.2 הסיבות לבחירה", "2.4.3 מוטיבציה", "2.4.4 הצורך והפתרון", "2.4.5 פתרונות שנבחנו במחקר המקדים"],
+      "source_files": ["README.md", "הצעת פרוייקט (sections: תיאור הנושא, הגדרת הבעיה האלגוריתמית)"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 3,
+      "id": "03-goals-objectives",
+      "file": "03-goals-objectives.md",
+      "title": "מטרות / יעדים",
+      "required_sections": ["מטרות-על", "יעדים מדידים", "יעדי משנה"],
+      "source_files": ["README.md", "CURRENT_STATE.md", "הצעת פרוייקט"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 4,
+      "id": "04-challenges",
+      "file": "04-challenges.md",
+      "title": "אתגרים",
+      "required_sections": ["אתגרים טכניים", "אתגרים אלגוריתמיים", "אתגרי אינטגרציה Python↔Java", "אתגרי async/threading", "אתגרי רשת ועמיתים זדוניים"],
+      "source_files": ["DOWNLOAD_STALLING_DEBUG_GUIDE.md", "CURRENT_STATE.md", "python_engine/download_manager.py"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 5,
+      "id": "05-success-metrics",
+      "file": "05-success-metrics.md",
+      "title": "מדדי הצלחה למערכת",
+      "required_sections": ["KPIs כמותיים", "KPIs איכותיים", "מדדי השוואה בין אלגוריתמים"],
+      "source_files": ["python_engine/download_manager.py (DownloadStats class)", "python_engine/api_server.py (algorithm-stats endpoint)"],
+      "information_sufficiency": "partial",
+      "gaps": ["ייתכן שאין מדידות ניסיוניות מסודרות בקובץ – יש לציין שיש להפיק טבלת תוצאות בפרק 24"]
+    },
+    {
+      "number": 6,
+      "id": "06-theoretical-background",
+      "file": "06-theoretical-background.md",
+      "title": "רקע תיאורטי / ספרות מקצועית",
+      "required_sections": ["6.1 מושגים עיקריים בתחום הדעת של הבעיה", "6.2 נושאים רלוונטיים בתחום הדעת של הבעיה", "6.3 סקירה מקצועית של הבעיה בעולם", "6.4 נושאים רלוונטיים במדעי המחשב בהקשר לבעיה"],
+      "source_files": ["הצעת פרוייקט (סעיפים 3, 12)", "README.md (References)", "BEP-3 specification"],
+      "information_sufficiency": "sufficient",
+      "notes": "יש לצטט בקפדנות 6+ מקורות מההצעה ולהוסיף מקורות לרשתות, OS, ותורת המשחקים."
+    },
+    {
+      "number": 7,
+      "id": "07-existing-solutions",
+      "file": "07-existing-solutions.md",
+      "title": "תיאור פתרונות קיימים לבעיה",
+      "required_sections": ["qBittorrent / Transmission / libtorrent / Deluge", "פתרונות HTTP/CDN/Cloud", "IPFS / WebTorrent / BitTorrent v2"],
+      "source_files": ["הצעת פרוייקט (סעיף 4)"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 8,
+      "id": "08-alternatives-analysis",
+      "file": "08-alternatives-analysis.md",
+      "title": "ניתוח חלופות מערכתי",
+      "required_sections": ["חלופה Client-Server", "חלופה P2P (BitTorrent)", "חלופה היברידית / CDN", "SWOT לכל חלופה"],
+      "source_files": ["הצעת פרוייקט"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 9,
+      "id": "09-chosen-alternative",
+      "file": "09-chosen-alternative.md",
+      "title": "תיאור החלופה הנבחרת",
+      "required_sections": ["הצדקה לבחירת P2P-BitTorrent", "התאמה לבעיה", "התאמה לאילוצי הפרויקט"],
+      "source_files": ["הצעת פרוייקט", "README.md"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 10,
+      "id": "10-system-specification",
+      "file": "10-system-specification.md",
+      "title": "אפיון המערכת שהוגדרה / מוצעת",
+      "required_sections": ["10.1 ניתוח דרישות (פונקציונליות + לא-פונקציונליות)", "10.2 מודול המערכת", "10.3 אפיון פונקציונלי", "10.4 ביצועים עיקריים", "10.5 אילוצים"],
+      "source_files": ["README.md", "CURRENT_STATE.md", "python_engine/* (all modules)"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 11,
+      "id": "11-architecture",
+      "file": "11-architecture.md",
+      "title": "תיאור הארכיטקטורה",
+      "required_sections": ["11.1 Top-Down Level Design", "11.2 רכיבי הפתרון (DB, תקשורת, יישום, לקוח)", "11.3 תהליכי מערכת הפעלה (asyncio, threading)", "11.4 ארכיטקטורת רשת", "11.5 תיאור API", "11.6 פרוטוקולי תקשורת", "11.7 שרת-לקוח"],
+      "source_files": ["python_engine/api_server.py", "python_engine/download_manager.py", "python_engine/peer_connection.py", "python_engine/tracker_client.py", "java_gui/src/TorrentClientGUI.java", "java_gui/src/ApiService.java"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 12,
+      "id": "12-security",
+      "file": "12-security.md",
+      "title": "תיאור תהליכי אבטחת מידע במערכת",
+      "required_sections": ["12.1 תיאור התקיפה או ההגנה (Threat Model)", "12.2 תיאור הצפנות (SHA-1, פרטיות מול ה-Tracker, SWOT לאלגוריתמי הצפנה)"],
+      "source_files": ["python_engine/security.py", "python_engine/peer_connection.py (validation logic)", "python_engine/torrent_metadata.py (SHA-1 info_hash)"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 13,
+      "id": "13-machine-learning-not-applicable",
+      "file": "13-machine-learning-not-applicable.md",
+      "title": "(לא רלוונטי – הפרויקט אינו עוסק בלמידת מכונה)",
+      "required_sections": ["נימוק קצר לאי-תחולת הפרק"],
+      "source_files": [],
+      "information_sufficiency": "n/a",
+      "notes": "סעיף 13 בנוהל מתחיל במילים \"אם הפרויקט עוסק בלמידת מכונה\" – לכן אינו ישים. הקובץ יכלול הצהרה קצרה ושמירה על מספור הפרקים."
+    },
+    {
+      "number": 14,
+      "id": "14-software-description",
+      "file": "14-software-description.md",
+      "title": "תיאור התוכנה",
+      "required_sections": ["14.1 פירוט API", "14.2 סביבת עבודה", "14.3 שפות תכנות"],
+      "source_files": ["python_engine/api_server.py", "requirements.txt", "start.sh", "start.bat", "java_gui/lib/json.jar"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 15,
+      "id": "15-uml-use-cases",
+      "file": "15-uml-use-cases.md",
+      "title": "ניתוח ותרשים Use Cases / UML של המערכת המוצעת",
+      "required_sections": ["15.1 UC עיקריים + אלגוריתם ראשי", "15.2 Use Case לכל פונקציה עיקרית", "15.3 מבני נתונים", "15.4 חישוב יעילות", "15.5 קשרים בין יחידות", "15.6 עץ מודולים", "15.7 Use Case Diagram", "15.8 רשימת Use Cases", "15.9 תרשים UML", "15.10 Design Class Diagram", "15.11 תרשים מחלקות", "15.12 תיאור המחלקות המוצעות (קלטים, פלטים, זרימת מידע)"],
+      "source_files": ["python_engine/*.py (all)", "java_gui/src/*.java (all)"],
+      "information_sufficiency": "sufficient",
+      "notes": "פרק עתיר תרשימים. תרשימים מפורטים יסומנו ב-IMAGES.md לציור ידני / mermaid."
+    },
+    {
+      "number": 16,
+      "id": "16-screen-flow",
+      "file": "16-screen-flow.md",
+      "title": "תרשים מסכים (Screen Flow Diagram)",
+      "required_sections": ["היררכיית המסכים", "מעברים בין המסכים"],
+      "source_files": ["java_gui/src/TorrentClientGUI.java", "java_gui/src/AlgorithmStatsDialog.java"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 17,
+      "id": "17-screens",
+      "file": "17-screens.md",
+      "title": "תיאור פרטני של כל מסך באפליקציה",
+      "required_sections": ["17.1 תפקיד המסך", "17.2 תיאור המסך", "17.3 צילום מסך"],
+      "source_files": ["java_gui/src/TorrentClientGUI.java", "java_gui/src/AlgorithmStatsDialog.java"],
+      "information_sufficiency": "partial",
+      "gaps": ["צילומי מסך בפועל אינם במאגר – הסטודנט יצטרך להוסיף אותם. IMAGES.md ירשום אותם."]
+    },
+    {
+      "number": 18,
+      "id": "18-ui-elements",
+      "file": "18-ui-elements.md",
+      "title": "תיאור אלמנטי תצוגה (כפתורים, שדות, רכיבי טבלה)",
+      "required_sections": ["תיאור תפקיד כל אלמנט"],
+      "source_files": ["java_gui/src/TorrentClientGUI.java", "java_gui/src/AlgorithmStatsDialog.java"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 19,
+      "id": "19-user-alerts",
+      "file": "19-user-alerts.md",
+      "title": "הודעות למשתמש (Alerts)",
+      "required_sections": ["JOptionPane dialogs", "Completion popup", "Error dialogs", "Confirmation dialogs"],
+      "source_files": ["java_gui/src/TorrentClientGUI.java (JOptionPane.showXxxDialog calls)"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 20,
+      "id": "20-user-interface",
+      "file": "20-user-interface.md",
+      "title": "ממשק משתמש",
+      "required_sections": ["תיאור הוליסטי", "ארגון", "RTL Hebrew", "UX principles"],
+      "source_files": ["java_gui/src/TorrentClientGUI.java"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 21,
+      "id": "21-code",
+      "file": "21-code.md",
+      "title": "קוד התוכנית – על פי סטנדרטים בליווי תיעוד",
+      "required_sections": ["21.1 קלט", "21.2 פלט", "21.3 פונקציות קריטיות / חשובות / עיקריות"],
+      "source_files": ["python_engine/download_manager.py", "python_engine/piece_manager.py", "python_engine/peer_connection.py", "python_engine/bencode.py", "python_engine/api_server.py"],
+      "information_sufficiency": "sufficient",
+      "notes": "קטעי קוד ארוכים יועברו ל-appendix-a-code-samples.md עם הפניה צולבת."
+    },
+    {
+      "number": 22,
+      "id": "22-database",
+      "file": "22-database.md",
+      "title": "תיאור מסד הנתונים (DSD / ERD)",
+      "required_sections": ["סכמת ישויות וקשרים", "טבלאות: torrents, performance_stats, algorithm_stats, events", "DSD/ERD", "JSON state schema", "views/stored procedures אם רלוונטי"],
+      "source_files": ["python_engine/api_server.py (SQLite schema definitions)", "python_engine/download_manager.py (JSON state serialization)"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 23,
+      "id": "23-user-manual",
+      "file": "23-user-manual.md",
+      "title": "מדריך למשתמש",
+      "required_sections": ["התקנה", "הפעלה (one-click ומדויקת)", "הוספת torrent", "ניהול הורדות", "צפייה בהיסטוריה ובסטטיסטיקות אלגוריתמים", "פתרון תקלות"],
+      "source_files": ["README.md", "start.sh", "start.bat", "DOWNLOAD_STALLING_DEBUG_GUIDE.md"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 24,
+      "id": "24-testing-evaluation",
+      "file": "24-testing-evaluation.md",
+      "title": "בדיקות והערכה",
+      "required_sections": ["בדיקות יחידה (pytest)", "בדיקות אינטגרציה (Python↔Java)", "בדיקות E2E מערכת", "בדיקות ביצועים: השוואת אלגוריתמים", "ניתוח באג ההתקעות שנפתר"],
+      "source_files": ["python_engine/tests/*.py (8 test files)", "DOWNLOAD_STALLING_DEBUG_GUIDE.md"],
+      "information_sufficiency": "partial",
+      "gaps": ["תוצאות מדידה אמפיריות (טבלאות ערכים) של ניסויי השוואה ייתכן שאינן זמינות במלואן – ייסומן ב-TODO.md אם נחסר נתון."]
+    },
+    {
+      "number": 25,
+      "id": "25-conclusions",
+      "file": "25-conclusions.md",
+      "title": "מסקנות",
+      "required_sections": ["מסקנות אלגוריתמיות", "מסקנות הנדסיות", "מסקנות לגבי אינטגרציה רב-לשונית", "מסקנות לגבי asyncio"],
+      "source_files": ["DOWNLOAD_STALLING_DEBUG_GUIDE.md", "CURRENT_STATE.md"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 26,
+      "id": "26-future-developments",
+      "file": "26-future-developments.md",
+      "title": "פיתוחים עתידיים",
+      "required_sections": ["DHT", "UDP Tracker", "PEX", "Protocol Encryption", "Multi-file & BTv2", "ML adaptive choking"],
+      "source_files": ["הצעת פרוייקט (סעיף 9)"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": 27,
+      "id": "27-bibliography",
+      "file": "27-bibliography.md",
+      "title": "ביבליוגרפיה",
+      "required_sections": ["מקורות אקדמיים", "מסמכי BEP", "ספרי לימוד OS/Networks", "מקורות אונליין"],
+      "source_files": ["הצעת פרוייקט (סעיף 12)", "README.md (References)"],
+      "information_sufficiency": "sufficient"
+    },
+    {
+      "number": "appendix-a",
+      "id": "appendix-a-code-samples",
+      "file": "appendix-a-code-samples.md",
+      "title": "נספח א' – קטעי קוד מרכזיים",
+      "required_sections": ["קטעי קוד ארוכים: מודולים שלמים, מחלקות גדולות, אלגוריתמים במלואם, סכמת DB"],
+      "source_files": ["python_engine/*.py", "java_gui/src/*.java"],
+      "information_sufficiency": "sufficient"
+    }
+  ]
 }
