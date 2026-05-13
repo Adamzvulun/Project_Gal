@@ -12,4 +12,80 @@
 
 ---
 
-<!-- פריטים יתווספו כאן עם תחילת כתיבת הפרקים -->
+## Fig-01 – סריקת הצעת הפרויקט החתומה
+
+- **פרק**: 1 (הצעת הפרויקט שאושרה) — סעיף 1.1 / 1.17.
+- **מיקום בקובץ**: `01-approved-proposal.md`, מיד אחרי כותרת הפרק
+  (סעיף 1.1 *"פתיח לפרק"*); דף החתימות בסוף הפרק (סעיף 1.17).
+- **סוג**: סריקת מסמך (PDF / תמונה).
+- **תיאור מפורט**: יש לשלב את כל עמודי ה-PDF המקורי
+  `הצעת פרוייקט - אדם זבולון 329441273 V2.2.pdf` (השמור בריפו) כסריקה
+  בתוך המסמך — דף השער, תוכן העניינים של ההצעה, ולפחות עמוד החתימות
+  האחרון (עמ' 23 ב-PDF המקורי) שעליו מופיעות שלוש החתימות: סטודנט,
+  מנחה, רכז מגמה. ההגשה הסופית ב-Word צריכה לכלול את כל 23 העמודים
+  של ההצעה כסריקה רציפה או כנספח מודפס.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-02 – תרשים ארכיטקטורה כללי (Top-Down) של המערכת
+
+- **פרק**: 1 (הצעת הפרויקט) — סעיף 1.8.1, וכן יצוטט שוב בפרק 11.
+- **מיקום בקובץ**: `01-approved-proposal.md`, מיד אחרי הפסקה הפותחת
+  של סעיף 1.8.1 *"חלוקה לשכבות ולמודולים"*.
+- **סוג**: תרשים ארכיטקטורה.
+- **תיאור מפורט**: תרשים זהה במהותו לתרשים בעמ' 8 של ההצעה המקורית.
+  התרשים צריך להציג שתי שכבות עיקריות:
+  - **Client** (חלק עליון) — מכיל את `Java GUI Client` עם שני
+    תת-רכיבים: `Java GUI (Swing)` ו-`HTTP Client (REST calls)`.
+  - **BitTorrent Engine** (חלק תחתון) — מכיל את הרכיבים:
+    `REST API Server (Flask)`, `TorrentMetadata (Bencode parsing)`,
+    `Security (Validation & Logging)` בשורה עליונה; `DownloadManager
+    (choke/unchoke)` במרכז; `TrackerClient (HTTP/HTTPS)`,
+    `PieceManager (rarest-first)`, `PeerConnection* (TCP sockets)`
+    בשורה תחתונה.
+  - חצים: מ-Java GUI ל-REST API Server (תווית `REST API`); מ-Flask
+    אל DownloadManager; מ-DownloadManager אל שלושת הרכיבים התחתונים;
+    מ-TrackerClient לרכיב חיצוני `Tracker Servers` (תווית `announce /
+    response`); מ-PeerConnection לרכיב חיצוני `Peers in Swarm`
+    (תווית `peer wire protocol`).
+  - יש להציג את הגבולות הלוגיים של ה-Client לעומת ה-Engine באמצעות
+    מסגרות מודגשות, כדי להבהיר שמדובר בשני תהליכים נפרדים על אותה
+    מכונה המתקשרים דרך REST.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-03 – תרשים רצף הורדה (Sequence Diagram)
+
+- **פרק**: 1 (הצעת הפרויקט) — סעיף 1.9.2, וכן יצוטט שוב בפרק 11
+  ובפרק 15.
+- **מיקום בקובץ**: `01-approved-proposal.md`, בסוף סעיף 1.9.2
+  *"תקשורת בין peers – Peer Wire Protocol"*.
+- **סוג**: תרשים רצף (Sequence Diagram) ברוח UML.
+- **תיאור מפורט**: תרשים זהה במהותו לתרשים בעמ' 12 של ההצעה המקורית.
+  *Lifelines*: `Java GUI`, `Python REST API`, `DownloadManager`,
+  `TrackerClient`, `PeerConnection`, `Remote Peer`, `PieceManager`
+  (PM). זרימה:
+  1. `Java GUI → Python REST API`: `POST /torrents` עם קובץ `.torrent`.
+  2. `REST API → DownloadManager`: `startDownload(metadata)`.
+  3. `DownloadManager → TrackerClient`: `announce(info_hash, stats)`,
+     החזרה: `peers[]`.
+  4. *loop* על peers: `DownloadManager → PeerConnection`: `connect(ip,
+     port)`; `PeerConnection → Remote Peer`: `handshake(info_hash,
+     peer_id)`; `Remote Peer → PeerConnection`: `handshake(...)`,
+     `bitfield`.
+  5. *loop* (עד שהקובץ הושלם):
+     - `DownloadManager → PieceManager`: `selectPiece(rarest-first)`,
+       החזרה: `pieceIndex`.
+     - `DownloadManager → PeerConnection`: `request(pieceIndex,
+       blocks)`; `PeerConnection → Remote Peer`: `request(...)`;
+       `Remote Peer → PeerConnection`: `piece blocks`.
+     - `PeerConnection → DownloadManager`: `data(pieceIndex, block)`;
+       `DownloadManager → PieceManager`: `submitBlock(pieceIndex,
+       block)`; *הערה*: "If piece complete & hash OK".
+- **סטטוס**: דרוש.
+
+---
+
+<!-- פריטים נוספים יתווספו עם התקדמות כתיבת הפרקים -->
