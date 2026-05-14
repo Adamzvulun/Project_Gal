@@ -434,4 +434,176 @@
 
 ---
 
+## Fig-17 – Screen Flow Diagram
+
+- **פרק**: 16 — סעיף 16.2 / 16.3.
+- **מיקום בקובץ**: `16-screen-flow.md`, בסוף סעיף 16.3
+  (אחרי הקיבוצים הלוגיים).
+- **סוג**: Screen Flow Diagram (UML-flavored).
+- **תיאור מפורט**: 9 צמתים מלבניים המייצגים את 9 המסכים
+  (S1–S9 כפי שמופיעים בטבלת 16.1), עם תוויות שם, מזהה, וסוג
+  (`JFrame`/`JFileChooser`/`JOptionPane`/`JDialog`). חצים
+  מתויגים מציגים את כל המעברים מ-16.2.2:
+  - **חצי משתמש** (כחולים, מלאים): S1→S2, S2→S3, S3→S1,
+    S1→S4, S1→S5, S5→S6, S6→S5, S5→S1, S1→S7, S7→S6,
+    S7→S1.
+  - **חצי מערכת** (אדומים, מקווקווים): ⚙→S8 (completion),
+    כל מסך→S9 (error).
+  - **חצי "Cancel/חזרה"** (אפורים, דקים): S2→S1 (cancel
+    בפיקר), S3→S1, S4→S1 (No), S6→S5/S7 (No).
+  - תווית על כל חץ עם הטריגר: שם הכפתור / שם ההחלטה
+    (`"Add Torrent"`, `"YES"`, `"Cancel button"`, וכו').
+  - מסגרת כתומה דקה מסביב ל-S5+S7 לסימון שהם non-modal;
+    מסגרת אפורה רגילה לשאר ה-modals.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-18 – Screenshot: Main Window (S1)
+
+- **פרק**: 17 — סעיף 17.1.3.
+- **מיקום בקובץ**: `17-screens.md`, בסוף סעיף 17.1.3.
+- **סוג**: צילום מסך.
+- **תיאור מפורט**: צילום של החלון הראשי במצב טיפוסי —
+  שלוש שורות בטבלה: (1) `ubuntu-22.04.iso` במצב `Running`
+  עם `JProgressBar` ב-~60%, מהירות `1.2 MB/s`, 18 peers;
+  (2) `debian-12.iso` במצב `Paused` עם progress 100% מוצג
+  בצבע אחר, מהירות `0 B/s`; (3) `archlinux-2024.iso` במצב
+  `Completed` עם progress 100% מלא. ה-toolbar מציג את 6
+  הכפתורים + שני ה-combos עם ערכים נראים (`Rarest First`,
+  `Tit-for-Tat`). אזור הלוג בתחתית מציג 5–8 שורות אחרונות
+  של אירועים (`Connected to peer …`, `Piece 1024 verified
+  OK`, וכו'). השורה התחתונה: `Status: Ready`.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-19 – Screenshot: Select Torrent File (S2)
+
+- **פרק**: 17 — סעיף 17.2.3.
+- **מיקום בקובץ**: `17-screens.md`, בסוף סעיף 17.2.3.
+- **סוג**: צילום מסך.
+- **תיאור מפורט**: `JFileChooser` עם כותרת `"Select Torrent
+  File"`, ניווט בתיקייה שמכילה מספר קבצי `.torrent` לדוגמה.
+  ה-dropdown של מסנן הקבצים מציג `"Torrent Files (*.torrent)"`
+  כפעיל.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-20 – Screenshot: Choose Download Location (S3)
+
+- **פרק**: 17 — סעיף 17.3.3.
+- **מיקום בקובץ**: `17-screens.md`, בסוף סעיף 17.3.3.
+- **סוג**: צילום מסך.
+- **תיאור מפורט**: `JFileChooser` עם כותרת `"Choose Download
+  Location"`, מצב DIRECTORIES_ONLY (קבצים לא מוצגים, רק
+  תיקיות). ה-dropdown מציג `"Directories"` ולא ניתן לבחור
+  All Files.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-21 – Screenshot: Confirm Cancel (S4)
+
+- **פרק**: 17 — סעיף 17.4.3.
+- **מיקום בקובץ**: `17-screens.md`, בסוף סעיף 17.4.3.
+- **סוג**: צילום מסך.
+- **תיאור מפורט**: `JOptionPane.showConfirmDialog` קטן עם
+  אייקון השאלה הסטנדרטי של Swing, כותרת `"Confirm Cancel"`,
+  הודעה `"Are you sure you want to cancel this download?"`,
+  ושני כפתורים `Yes` ו-`No`.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-22 – Screenshot: Download History (S5)
+
+- **פרק**: 17 — סעיף 17.5.3.
+- **מיקום בקובץ**: `17-screens.md`, בסוף סעיף 17.5.3.
+- **סוג**: צילום מסך.
+- **תיאור מפורט**: `JDialog` בגודל 820×380 עם הכותרת
+  `"Download History"`. ה-`JTable` מציג 4–5 שורות הורדות
+  שהסתיימו עם 9 העמודות: Name, Size, Status, Avg Speed,
+  Peak Speed, Time, Piece Algo, Peer Algo, Choke Cycles.
+  בתחתית: שני כפתורים — `Clear History` ו-`Close`.
+  הערכים אמיתיים: שם torrent, גודל בפורמט קריא (`4.0 GB`,
+  `2.1 GB`), סטטוס (`Completed`/`Cancelled`), מהירויות
+  (`1.5 MB/s`), זמן בפורמט `XX:YY:ZZ`, אלגוריתמים בפורמט
+  ידידותי (`Rarest First`, `Tit-for-Tat`).
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-23 – Screenshot: Confirm Clear History (S6)
+
+- **פרק**: 17 — סעיף 17.6.3.
+- **מיקום בקובץ**: `17-screens.md`, בסוף סעיף 17.6.3.
+- **סוג**: צילום מסך.
+- **תיאור מפורט**: `JOptionPane.showConfirmDialog` קטן עם
+  אייקון שאלה, כותרת `"Confirm"`, הודעה `"Clear all download
+  history?"`, וכפתורי `Yes`/`No`.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-24 – Screenshots: Algorithm Statistics (S7)
+
+- **פרק**: 17 — סעיף 17.7.3.
+- **מיקום בקובץ**: `17-screens.md`, בסוף סעיף 17.7.3.
+- **סוג**: שני צילומי מסך (Tab 1 ו-Tab 2).
+- **תיאור מפורט**:
+  - **Tab 1: "Piece Selection (Rarest-First)"** — חלק עליון:
+    `JComboBox` עם torrent נבחר + כפתור `Refresh`. אמצע:
+    bar chart שמצויר ב-Java2D ב-`BarChartPanel`, מציג ~15–30
+    עמודות אופקיות, ציר X = piece index, ציר Y = מספר פעמים
+    שנבחר כ-rarest. עמודות בצבע כחול עם תוויות מספריות
+    מעליהן. תחתית: `summaryLabel` עם טקסט כמו `"Total
+    pieces: 1024, total rarest selections: 837, average:
+    0.82 per piece"`.
+  - **Tab 2: "General Statistics"** — שורה עליונה: שני
+    כפתורים `Refresh` ו-`Clear History`. גוף: 9 שדות מידע
+    בעמודה אנכית, כל אחד בפורמט `<NAME>:  <VALUE>` עם
+    הערכים האמיתיים:
+      Total Files Downloaded: 12
+      Total Data Downloaded: 18.4 GB
+      Total Download Time: 02:14:37
+      Average Download Speed: 1.4 MB/s
+      Best Peak Speed: 3.2 MB/s
+      Total Peers Connected: 312
+      Total Choke/Unchoke Cycles: 1,847
+      Largest File: ubuntu-22.04.iso (4.0 GB)
+      Fastest Download: archlinux-2024.iso (8 min)
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-25 – Screenshot: Download Complete Popup (S8)
+
+- **פרק**: 17 — סעיף 17.8.3.
+- **מיקום בקובץ**: `17-screens.md`, בסוף סעיף 17.8.3.
+- **סוג**: צילום מסך.
+- **תיאור מפורט**: `JOptionPane.showMessageDialog` בסוג
+  `INFORMATION_MESSAGE` עם אייקון "i" של Swing, כותרת
+  `"Download Complete"`, הודעה דו-שורית: `"ubuntu-22.04.iso\n
+  Saved to: /home/user/Downloads/ubuntu-22.04.iso"`, כפתור
+  `OK` יחיד.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-26 – Screenshot: Error Popup (S9)
+
+- **פרק**: 17 — סעיף 17.9.3.
+- **מיקום בקובץ**: `17-screens.md`, בסוף סעיף 17.9.3.
+- **סוג**: צילום מסך.
+- **תיאור מפורט**: `JOptionPane.showMessageDialog` בסוג
+  `ERROR_MESSAGE` עם אייקון "X" אדום של Swing, כותרת
+  `"Error"`, הודעה דו-שורית: `"Failed to start download:\n
+  Invalid torrent file: Missing 'announce' field"`, כפתור
+  `OK` יחיד.
+- **סטטוס**: דרוש.
+
+---
+
 <!-- פריטים נוספים יתווספו עם התקדמות כתיבת הפרקים -->
