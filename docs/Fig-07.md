@@ -4,9 +4,8 @@
 **סוג**: Class Diagram (UML).
 **מקור התוכן**: `book/15-uml-use-cases.md` §15.10-15.12 + סריקת קוד.
 
-> התרשים מפוצל לשני חלקים (Python Engine ו-Java GUI). כדי להתאים לעמוד
-> A4 אנכי, התרשימים מציגים רק את **שמות המחלקות** ואת הקשרים ביניהן.
-> הפירוט המלא של fields ו-methods נמצא בסעיף "פירוט מחלקות" למטה.
+> התרשים מפוצל לשני חלקים (Python Engine ו-Java GUI) כדי להתאים לעמוד
+> בודד. הגשר ביניהם מוצג בסוף כקשר נפרד.
 
 ---
 
@@ -15,64 +14,226 @@
 ```mermaid
 %%{init: {'theme':'base', 'themeVariables': {'background':'#FFFFFF', 'primaryColor':'#FFFFFF', 'primaryBorderColor':'#000000', 'primaryTextColor':'#000000', 'lineColor':'#000000', 'classText':'#000000'}}}%%
 classDiagram
-    direction TB
+    direction LR
 
-    class DownloadManager
-    class Download
-    class DownloadStats
-    class PieceManager
-    class Piece
-    class Block
-    class PeerConnection
-    class PeerMessage
-    class TrackerClient
-    class Peer
-    class TrackerResponse
-    class SecurityManager
-    class PeerReputation
-    class TorrentMetadata
-    class FileInfo
+    class DownloadManager {
+        +Dict~str,Download~ downloads
+        +add_torrent()
+        +pause_download(id)
+        +resume_download(id)
+        +cancel_download(id)
+        +get_all_status()
+    }
 
-    DownloadManager "1"  o-- "*" Download
-    Download        "1"  *-- "1" PieceManager
-    Download        "1"  *-- "1" SecurityManager
-    Download        "1"  *-- "1" DownloadStats
-    Download        "1"  o-- "1" TrackerClient
-    Download        "1"  o-- "*" PeerConnection
-    PieceManager    "1"  *-- "*" Piece
-    Piece           "1"  *-- "*" Block
-    PeerConnection  "1"  *-- "*" PeerMessage
-    SecurityManager "1"  *-- "*" PeerReputation
-    TrackerClient   --> TrackerResponse : returns
-    TrackerClient   --> Peer : returns
-    TorrentMetadata "1"  *-- "*" FileInfo
-    Download        ..> TorrentMetadata : uses
-    DownloadManager ..> TorrentMetadata : uses
+    class Download {
+        +DownloadState state
+        +DownloadStats stats
+        +async start()
+        +async pause()
+        +async resume()
+        +async cancel()
+        +get_status() dict
+        -async _download_loop()
+        -async _on_peer_message()
+    }
+
+    class DownloadStats {
+        +bytes_downloaded
+        +bytes_uploaded
+        +total_peers_seen
+        +download_speed
+    }
+
+    class PieceManager {
+        +List~Piece~ pieces
+        +Dict~int,int~ _peer_frequency
+        +select_piece_rarest_first(peer)
+        +select_piece_random(peer)
+        +submit_block(idx, off, data)
+        +verify_piece(idx) bool
+        +reset_stale_pieces(timeout)
+    }
+
+    class Piece {
+        +int index
+        +bytearray _data
+        +PieceStatus status
+        +submit_block(off, data)
+        +verify_hash() bool
+    }
+
+    class Block {
+        +int offset
+        +int length
+        +bytes data
+    }
+
+    class PeerConnection {
+        +str ip
+        +int port
+        +bool connected
+        +bool peer_choking
+        +async connect()
+        +async send_request(idx, off, len)
+        +async disconnect()
+        -async _read_message()
+        -async _handle_message(msg)
+    }
+
+    class PeerMessage {
+        +MessageType type
+        +int piece_index
+        +int block_offset
+        +bytes block_data
+    }
+
+    class TrackerClient {
+        +str announce_url
+        +bytes info_hash
+        +int port
+        +async announce(event)
+        +async start_periodic_announce(cb)
+        +update_stats(up, down, left)
+    }
+
+    class Peer {
+        +str ip
+        +int port
+        +__hash__()
+    }
+
+    class TrackerResponse {
+        +int interval
+        +int complete
+        +int incomplete
+        +List~Peer~ peers
+    }
+
+    class SecurityManager {
+        +Dict~str,PeerReputation~ _peer_reputations
+        +Set~str~ _banned_peers
+        +report_successful_piece(key, idx)
+        +report_hash_failure(key, idx)
+        +is_peer_banned(key) bool
+    }
+
+    class PeerReputation {
+        +str peer_key
+        +int hash_failures
+        +float trust_score
+        +should_ban() bool
+    }
+
+    class TorrentMetadata {
+        +str announce
+        +bytes info_hash
+        +List~bytes~ pieces
+        +int total_size
+        +int piece_length
+        +parse_from_file(path)
+    }
+
+    class FileInfo {
+        +str path
+        +int length
+    }
+
+    DownloadManager  "1" o-- "*" Download
+    Download         "1" *-- "1" PieceManager
+    Download         "1" *-- "1" SecurityManager
+    Download         "1" *-- "1" DownloadStats
+    Download         "1" o-- "1" TrackerClient
+    Download         "1" o-- "*" PeerConnection
+    PieceManager     "1" *-- "*" Piece
+    Piece            "1" *-- "*" Block
+    PeerConnection   "1" *-- "*" PeerMessage
+    SecurityManager  "1" *-- "*" PeerReputation
+    TrackerClient    --> TrackerResponse : returns
+    TrackerClient    --> Peer : returns
+    TorrentMetadata  "1" *-- "*" FileInfo
+    Download         ..> TorrentMetadata : uses
+    DownloadManager  ..> TorrentMetadata : uses
 ```
 
 ---
 
-## חלק ב' — Java GUI + הגשר ל-Python
+## חלק ב' — Java GUI (3 + 3 nested) + הגשר ל-Python
 
 ```mermaid
 %%{init: {'theme':'base', 'themeVariables': {'background':'#FFFFFF', 'primaryColor':'#FFFFFF', 'primaryBorderColor':'#000000', 'primaryTextColor':'#000000', 'lineColor':'#000000', 'classText':'#000000'}}}%%
 classDiagram
     direction TB
 
-    class JFrame
-    class JDialog
-    class JPanel
-    class Exception
+    class JFrame {
+        <<javax.swing>>
+    }
+    class JDialog {
+        <<javax.swing>>
+    }
+    class JPanel {
+        <<javax.swing>>
+    }
+    class Exception {
+        <<java.lang>>
+    }
 
-    class TorrentClientGUI
-    class ApiService
-    class TorrentStatus
-    class ApiException
-    class AlgorithmStatsDialog
-    class BarChartPanel
+    class TorrentClientGUI {
+        -JTable downloadTable
+        -JTextArea logArea
+        -ApiService apiService
+        -Map previousStates
+        +initComponents()
+        +onAddTorrent(e)
+        +onCancel(e)
+        +onShowHistory(e)
+        +updateTable(statuses)
+    }
 
-    class FlaskAPI
-    class DownloadManager_py
+    class ApiService {
+        -String baseUrl
+        +startDownload(...)
+        +pause(id)
+        +resume(id)
+        +cancel(id)
+        +getAllStatus()
+        +getHistory()
+        +clearHistory()
+    }
+
+    class TorrentStatus {
+        <<nested in ApiService>>
+        +String id
+        +String name
+        +String state
+        +double progress
+        +long speed
+    }
+
+    class ApiException {
+        <<nested in ApiService>>
+        +int statusCode
+    }
+
+    class AlgorithmStatsDialog {
+        -JTabbedPane tabs
+        -BarChartPanel barChart
+        +loadTorrents()
+        +refresh()
+    }
+
+    class BarChartPanel {
+        <<nested in AlgorithmStatsDialog>>
+        +paintComponent(g)
+    }
+
+    class FlaskAPI {
+        <<Python REST server>>
+        port 5000
+    }
+
+    class DownloadManager_py {
+        <<from Part A>>
+    }
 
     JFrame    <|-- TorrentClientGUI
     JDialog   <|-- AlgorithmStatsDialog
@@ -85,77 +246,73 @@ classDiagram
     ApiService           ..> ApiException : throws
     AlgorithmStatsDialog "1" *-- "1" BarChartPanel
 
-    ApiService -- FlaskAPI : "HTTP/JSON REST localhost:5000"
-    FlaskAPI   ..> DownloadManager_py : delegates
+    ApiService -- FlaskAPI : HTTP/JSON REST on loopback
+    FlaskAPI   ..> DownloadManager_py : delegates to
 ```
-
----
-
-## פירוט מחלקות (Python Engine)
-
-- **`DownloadManager`** — `Dict[str,Download] downloads`; `add_torrent`,
-  `pause/resume/cancel_download(id)`, `get_all_status`.
-- **`Download`** — `DownloadState state`, `DownloadStats stats`; `async
-  start/pause/resume/cancel`, `get_status`, `_download_loop`,
-  `_on_peer_message`.
-- **`DownloadStats`** — `bytes_downloaded`, `bytes_uploaded`,
-  `total_peers_seen`, `download_speed`.
-- **`PieceManager`** — `List[Piece] pieces`, `Dict[int,int] _peer_frequency`;
-  `select_piece_rarest_first`, `select_piece_random`, `submit_block`,
-  `verify_piece`, `reset_stale_pieces`.
-- **`Piece`** — `int index`, `bytearray _data`, `PieceStatus status`;
-  `submit_block`, `verify_hash`.
-- **`Block`** — `int offset`, `int length`, `bytes data`.
-- **`PeerConnection`** — `ip`, `port`, `connected`, `peer_choking`; `async
-  connect/disconnect`, `send_request`, `_read_message`, `_handle_message`.
-- **`PeerMessage`** — `MessageType type`, `piece_index`, `block_offset`,
-  `block_data`.
-- **`TrackerClient`** — `announce_url`, `info_hash`, `port`; `async
-  announce`, `start_periodic_announce`, `update_stats`.
-- **`Peer`** — `ip`, `port`; `__hash__` (מאפשר שימוש ב-`Set[Peer]`).
-- **`TrackerResponse`** — `interval`, `complete`, `incomplete`, `List[Peer]`.
-- **`SecurityManager`** — `Dict[str,PeerReputation]`, `Set[str] _banned_peers`;
-  `report_successful_piece`, `report_hash_failure`, `is_peer_banned`.
-- **`PeerReputation`** — `peer_key`, `hash_failures`, `trust_score`;
-  `should_ban`.
-- **`TorrentMetadata`** — `announce`, `info_hash`, `pieces`, `total_size`,
-  `piece_length`; `parse_from_file`.
-- **`FileInfo`** — `path`, `length`.
-
-## פירוט מחלקות (Java GUI)
-
-- **`TorrentClientGUI extends JFrame`** — `JTable downloadTable`,
-  `JTextArea logArea`, `ApiService apiService`, `Map previousStates`;
-  `initComponents`, `onAddTorrent`, `onCancel`, `onShowHistory`,
-  `updateTable`.
-- **`ApiService`** — `String baseUrl`; `startDownload`,
-  `pause/resume/cancel(id)`, `getAllStatus`, `getHistory`, `clearHistory`.
-- **`TorrentStatus`** (nested ב-`ApiService`) — `id`, `name`, `state`,
-  `progress`, `speed`.
-- **`ApiException extends Exception`** (nested ב-`ApiService`) —
-  `statusCode`.
-- **`AlgorithmStatsDialog extends JDialog`** — `JTabbedPane tabs`,
-  `BarChartPanel barChart`; `loadTorrents`, `refresh`.
-- **`BarChartPanel extends JPanel`** (nested ב-`AlgorithmStatsDialog`) —
-  `paintComponent(g)`.
 
 ---
 
 ## הקשרים (סימוני UML)
 
 - **◆ קומפוזיציה** (`*--`) — חיים יחדיו. כשהבעלים מושמד, החלק מושמד.
+    - `Download` ◆ `PieceManager`, `SecurityManager`, `DownloadStats`
+    - `PieceManager` ◆ `Piece` ◆ `Block`
+    - `PeerConnection` ◆ `PeerMessage`
+    - `SecurityManager` ◆ `PeerReputation`
+    - `TorrentMetadata` ◆ `FileInfo`
+    - `TorrentClientGUI` ◆ `ApiService`
+    - `AlgorithmStatsDialog` ◆ `BarChartPanel`
 - **◇ אגרגציה** (`o--`) — בעלות "רכה". החלקים יכולים להמשיך להתקיים.
-- **──► אסוסיאציה** (`-->` / `..>`) — תלות חלשה (משתמש ב-, מחזיר, זורק).
-- **──▷ ירושה** (`<|--`) — `extends` ב-Java / inheritance.
+    - `DownloadManager` ◇ `Download`
+    - `Download` ◇ `TrackerClient`
+    - `Download` ◇ `Dict[key, PeerConnection]`
+- **──► אסוסיאציה / שימוש** (`-->` או `..>`) — תלות חלשה (לוקאלי /
+  הוחזר מ-method / נקרא ב-import).
+    - `TrackerClient` ──► `TrackerResponse`, `Peer`
+    - `Download` --> `TorrentMetadata`
+    - `ApiService` --> `TorrentStatus`, `ApiException`
+- **──▷ ירושה** (`<|--`) — extends.
+    - `TorrentClientGUI` ──▷ `JFrame`
+    - `AlgorithmStatsDialog` ──▷ `JDialog`
+    - `BarChartPanel` ──▷ `JPanel`
+    - `ApiException` ──▷ `Exception`
 
 ---
 
 ## הגשר בין שני ה-swimlanes (Python ↔ Java)
 
-`ApiService` (Java) מתקשר עם Flask REST API (Python) דרך **HTTP/JSON
-על loopback** בלבד (`127.0.0.1:5000`). אין shared memory, אין pipes,
-אין file descriptors משותפים. לכל פעולה ב-`TorrentClientGUI` יש קריאה
-ב-`ApiService` שעוברת ל-Flask ושם ל-`DownloadManager`.
+ה-`ApiService` (Java) מתקשר עם ה-Flask REST API (Python) בלבד דרך
+**HTTP/JSON על loopback** (`127.0.0.1` פורט `5000`). אין shared memory,
+אין pipes, אין file descriptors משותפים.
+
+לכל קריאת UI ב-`TorrentClientGUI` מקבילה קריאת API ב-`ApiService`
+שעוברת ל-Flask, נכנסת ל-`DownloadManager`, ומחזירה JSON שמומר בחזרה
+ל-`TorrentStatus` (Java).
+
+---
+
+## רשימת המחלקות
+
+**Python Engine — 15 מחלקות עיקריות + 4 enums + 3 exceptions = 22 (לפי
+`book/15-uml-use-cases.md` §15.11)**:
+
+- **מנהל מערכת**: `DownloadManager`, `Download`, `DownloadStats`,
+  `DownloadState` (enum), `AlgorithmType` (enum).
+- **pieces**: `PieceManager`, `Piece`, `Block`, `PieceStatus` (enum).
+- **רשת**: `PeerConnection`, `PeerMessage`, `MessageType` (enum),
+  `PeerConnectionError`, `TrackerClient`, `Peer`, `TrackerResponse`,
+  `TrackerError`.
+- **metadata**: `TorrentMetadata`, `FileInfo`, `TorrentMetadataError`.
+- **bencode**: `BencodeDecodeError`, `BencodeEncodeError`.
+- **security**: `SecurityManager`, `PeerReputation`, `SecurityEvent`.
+
+**Java GUI — 3 מחלקות ראשיות + 3 nested**:
+
+- ראשיות: `TorrentClientGUI`, `ApiService`, `AlgorithmStatsDialog`.
+- Nested: `TorrentStatus` (ב-`ApiService`), `ApiException`
+  (ב-`ApiService`), `BarChartPanel` (ב-`AlgorithmStatsDialog`).
+- בנוסף: `ProgressBarRenderer` (helper ב-`TorrentClientGUI`) ו-
+  `TorrentEntry` (helper ב-`AlgorithmStatsDialog`).
 
 ---
 
@@ -166,16 +323,20 @@ classDiagram
 - `DownloadManager` — `python_engine/download_manager.py:816`.
 - `Download` — `python_engine/download_manager.py:87`.
 - `DownloadStats` — `python_engine/download_manager.py:55`.
+- `DownloadState`, `AlgorithmType` (enums) — `download_manager.py:37, 47`.
 - `PieceManager` — `python_engine/piece_manager.py:148`.
 - `Piece` — `python_engine/piece_manager.py:67`.
 - `Block` — `python_engine/piece_manager.py:26`.
+- `PieceStatus` (enum) — `python_engine/piece_manager.py:19`.
 - `PeerConnection` — `python_engine/peer_connection.py:98`.
 - `PeerMessage` — `python_engine/peer_connection.py:42`.
+- `MessageType` (enum) — `python_engine/peer_connection.py:28`.
 - `TrackerClient` — `python_engine/tracker_client.py:135`.
 - `Peer` — `python_engine/tracker_client.py:36`.
 - `TrackerResponse` — `python_engine/tracker_client.py:56`.
 - `TorrentMetadata`, `FileInfo` — `python_engine/torrent_metadata.py:31, 20`.
-- `SecurityManager`, `PeerReputation` — `python_engine/security.py:79, 42`.
+- `SecurityManager`, `PeerReputation`, `SecurityEvent` —
+  `python_engine/security.py:79, 42, 24`.
 
 **Java**:
 
@@ -192,52 +353,36 @@ classDiagram
 
 ---
 
+## הערות עיצוביות
+
+- **שני התרשימים מציגים את אותה מערכת** — חלק א' (Python) וחלק ב' (Java)
+  לא יושבים זה ליד זה אבל הם משלימים. הגשר ביניהם מוצג כשורה אחת בחלק ב'
+  עם תווית `HTTP/JSON REST on loopback`.
+- **מצוין רק החלק החיוני של כל מחלקה** — לא כל ה-fields וה-methods. זה
+  Class Diagram ברמת overview, לא ספציפיקציית API.
+- **המספרים (1, *)** — multiplicity. למשל `Download "1" *-- "1" PieceManager`
+  אומר: לכל `Download` יש בדיוק `PieceManager` אחד. ו-`PieceManager "1"
+  *-- "*" Piece` אומר: לכל `PieceManager` יש כמה pieces.
+- **Enums ו-Exceptions** לא מוצגים בתרשים כדי לחסוך מקום ולשמור על
+  קריאות. הם מוזכרים ברשימה למטה.
+
+---
+
 ## איך להעתיק את התרשימים ל-Google Docs / Word
 
-### Google Docs — חייב PNG (לא SVG)
-
-**Google Docs לא תומך ב-SVG**. הוא לא יודע להציג קובץ SVG כתמונה מוטמעת.
-לכן השתמש ב-**PNG באיכות גבוהה**:
+לכל אחד מ-2 החלקים בנפרד:
 
 1. גש ל-**https://mermaid.live**
-2. הדבק את קוד ה-Mermaid של החלק הרצוי בצד שמאל.
-3. בצד ימין למעלה לחץ על **Actions → PNG**.
-4. למעלה (לפני ההורדה) יש שדה **Maximum Width / Height** ושדה
-   **Scale**. הגדל את **Scale ל-3x** או **4x** — זה ייתן PNG חד בהרבה
-   שלא יתפקסל בהדבקה לעמוד.
-5. ב-Google Docs: `Insert → Image → Upload from computer`.
-6. אחרי ההדבקה תוכל לכווץ את התמונה (גרור פינות) — היא תישאר חדה כי
-   ייצאת ב-Scale גבוה.
+2. מחק את הקוד שמופיע משמאל.
+3. העתק את הקוד של החלק הרצוי (מתחת ל-` ```mermaid ` עד לפני ה-` ``` `).
+4. הדבק משמאל. התרשים מתעדכן מימין על רקע לבן.
+5. למעלה בצד ימין: **Actions → PNG**. הגדל **Scale ל-3x** או **4x**
+   לפני ההורדה כדי לקבל תמונה חדה.
+6. ב-Google Docs: `Insert → Image → Upload from computer`.
+7. הוסף כותרת מעל כל תמונה: *"Fig-07a — Python Engine"* /
+   *"Fig-07b — Java GUI + Bridge"*.
 
-### Microsoft Word — SVG עובד ישירות
-
-**Word כן תומך ב-SVG** (גרסת Word 2016+):
-
-1. ב-Mermaid Live: **Actions → SVG**.
-2. ב-Word: `Insert → Pictures → This Device` ובחר את ה-SVG.
-3. ה-SVG נטען כ-vector — תוכל לכווץ ולהגדיל בלי לאבד איכות בכלל.
-
-### חלופה לוקטור ב-Google Docs (פתרון עוקף)
-
-אם אתה חייב וקטור ב-Docs:
-
-1. הורד SVG מ-mermaid.live.
-2. פתח אותו ב-**Inkscape** (חינמי) או ב-Illustrator.
-3. ייצא כ-**PDF**.
-4. ב-Google Docs: `Insert → Image → Upload from computer` —
-   PDF לא ייעלה כתמונה ישירה, אז:
-   - הפוך את ה-PDF ל-PNG באיכות גבוהה דרך https://cloudconvert.com
-   - או: השתמש ב-Google Drive — העלה את ה-PDF לדרייב, פתח, צלם מסך
-     ברזולוציה גבוהה.
-
-### Landscape orientation לעמוד התרשים
-
-לתרשימי class גדולים, גם אחרי הקיצורים, מומלץ להפוך את העמוד ל-Landscape:
-
-1. הצב את הסמן בעמוד שלפני התרשים.
-2. `Insert → Break → Section break (next page)`.
-3. `File → Page setup → Apply to: This section → Orientation: Landscape`.
-4. הוסף עוד `Section break` אחרי התרשים וחזור ל-Portrait לשאר העמודים.
-
-> **המלצה**: Class Diagrams לרוב נראים הכי טוב ב-Landscape. גם אם הם
-> נכנסים ל-Portrait, ב-Landscape יש להם מקום נשימה.
+> **Word 2016+**: תומך גם ב-SVG ישירות. ב-mermaid.live: **Actions → SVG**,
+> ואז ב-Word: `Insert → Pictures → This Device`. ה-SVG נשאר וקטורי.
+>
+> **Google Docs**: לא תומך ב-SVG. השתמש ב-PNG ב-Scale גבוה.
