@@ -49,32 +49,10 @@ flowchart TB
 
 ### מקרא לחלק א'
 
-<table dir="rtl" style="border-collapse:collapse;border:1pt solid #333333;font-family:'David','Times New Roman',serif;font-size:12pt;background:#FFFFFF;">
-  <thead>
-    <tr style="background-color:#DCE6F1;">
-      <th style="border:1pt solid #333333;padding:4px 10px;font-weight:bold;text-align:right;">צורה</th>
-      <th style="border:1pt solid #333333;padding:4px 10px;font-weight:bold;text-align:right;">משמעות</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">אובאל ירוק</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">התחלה</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">מלבן כחול</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">פעולה / קריאת מתודה</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">אובאל סגול</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">קישור לחלק הבא</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">מלבן אדום (חץ מקווקו)</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">טיפול בחריגה</td>
-    </tr>
-  </tbody>
-</table>
+- **אובאל ירוק** — התחלה.
+- **מלבן כחול** — פעולה / קריאת מתודה.
+- **אובאל סגול** — קישור לחלק הבא.
+- **מלבן אדום (חץ מקווקו)** — טיפול בחריגה.
 
 ---
 
@@ -133,137 +111,38 @@ flowchart TB
 
 ### מקרא לחלק ב'
 
-<table dir="rtl" style="border-collapse:collapse;border:1pt solid #333333;font-family:'David','Times New Roman',serif;font-size:12pt;background:#FFFFFF;">
-  <thead>
-    <tr style="background-color:#DCE6F1;">
-      <th style="border:1pt solid #333333;padding:4px 10px;font-weight:bold;text-align:right;">צורה</th>
-      <th style="border:1pt solid #333333;padding:4px 10px;font-weight:bold;text-align:right;">משמעות</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">אובאל סגול</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">קישור מהחלק הקודם</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">אובאל ירוק</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">סיום</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">מלבן כחול</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">פעולה / קריאת מתודה</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">מעוין כתום</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">החלטה / תנאי</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">מלבן אדום (חץ מקווקו)</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">טיפול בחריגה</td>
-    </tr>
-  </tbody>
-</table>
+- **אובאל סגול** — קישור מהחלק הקודם.
+- **אובאל ירוק** — סיום.
+- **מלבן כחול** — פעולה / קריאת מתודה.
+- **מעוין כתום** — החלטה / תנאי.
+- **מלבן אדום (חץ מקווקו)** — טיפול בחריגה.
 
 ---
 
-## טבלת אימות מול הקוד
+## אימות מול הקוד
 
-<table dir="rtl" style="border-collapse:collapse;border:1pt solid #333333;font-family:'David','Times New Roman',serif;font-size:12pt;background:#FFFFFF;">
-  <thead>
-    <tr style="background-color:#DCE6F1;">
-      <th style="border:1pt solid #333333;padding:4px 10px;font-weight:bold;text-align:right;">שלב</th>
-      <th style="border:1pt solid #333333;padding:4px 10px;font-weight:bold;text-align:right;">פעולה</th>
-      <th style="border:1pt solid #333333;padding:4px 10px;font-weight:bold;text-align:right;">מקור (line)</th>
-      <th style="border:1pt solid #333333;padding:4px 10px;font-weight:bold;text-align:right;">חלק</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">1</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">אתחול <code>TrackerClient</code> עם <code>port=6881</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:207-212</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">א'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">2</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>announce(event='started')</code> ראשוני</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:217-218</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">א'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">3</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">הוספת peers ל-<code>_known_peers</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:219-221</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">א'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">4</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">יצירת tasks ברקע: <code>_choke_loop</code>, <code>_keep_alive_loop</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:225-226</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">א'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">5</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>await start_periodic_announce(callback)</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:229-231</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">א'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">6</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>_connect_to_peers</code> ראשוני (non-blocking)</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:234</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">א'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">7</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">לולאה ראשית</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:238</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">ב'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">7a</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>reset_stale_pieces(PIECE_REQUEST_TIMEOUT=30)</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:240</code>, <code>:33</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">ב'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">7b</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>_request_pieces()</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:242</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">ב'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">7c</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>await sleep(0.1)</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:243</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">ב'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">7d</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">כל 15 שניות: cleanup + reconnect</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:247-250</code>, <code>:34</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">ב'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">7e</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>_update_speed</code> + <code>tracker.update_stats</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:253-258</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">ב'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">8</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">אם <code>is_complete</code> → <code>_complete_download</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:260-261</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">ב'</td>
-    </tr>
-    <tr>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">9</td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>finally: _save_state()</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>download_manager.py:269-270</code></td>
-      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">ב'</td>
-    </tr>
-  </tbody>
-</table>
+**חלק א' — אתחול**
+
+1. אתחול `TrackerClient` עם `port=6881` — `download_manager.py:207-212`.
+2. `announce(event='started')` ראשוני — `download_manager.py:217-218`.
+3. הוספת peers ל-`_known_peers` — `download_manager.py:219-221`.
+4. יצירת tasks ברקע: `_choke_loop`, `_keep_alive_loop` — `download_manager.py:225-226`.
+5. `await start_periodic_announce(callback)` — `download_manager.py:229-231`.
+6. `_connect_to_peers` ראשוני (non-blocking) — `download_manager.py:234`.
+
+**חלק ב' — לולאה ראשית ויציאה**
+
+7. תנאי הלולאה הראשית — `download_manager.py:238`.
+   - 7a. `reset_stale_pieces(PIECE_REQUEST_TIMEOUT=30)` —
+        `download_manager.py:240`, ערך הקבוע ב-`:33`.
+   - 7b. `_request_pieces()` — `download_manager.py:242`.
+   - 7c. `await sleep(0.1)` — `download_manager.py:243`.
+   - 7d. כל 15 שניות: cleanup + reconnect —
+        `download_manager.py:247-250`, ערך הקבוע ב-`:34`.
+   - 7e. `_update_speed` + `tracker.update_stats` —
+        `download_manager.py:253-258`.
+8. אם `is_complete` → `_complete_download` — `download_manager.py:260-261`.
+9. `finally: _save_state()` — `download_manager.py:269-270`.
 
 ---
 
@@ -293,13 +172,3 @@ flowchart TB
 > **טיפ**: אם בוחרים בכל זאת בתרשים אחד שלם, אפשר להפוך את העמוד ל-Landscape:
 > `Insert → Break → Section break (next page)` → `File → Page setup → Apply to: This section → Landscape`.
 
-## איך להעתיק את הטבלאות ל-Google Docs / Word
-
-הטבלאות בקובץ זה מעוצבות ב-HTML inline-styles **שמותאמים בדיוק לסגנון
-הספר** (גבול חיצוני `#333333`, גבולות פנימיים `#999999`, רקע שורת כותרת
-`#DCE6F1`, פונט David 12pt). העיצוב נשמר אוטומטית בהעתקה:
-
-1. פתח את הקובץ ב-GitHub / VS Code Preview (בעיניים בהירות).
-2. סמן את הטבלה בעכבר (גרור מהפינה השמאלית-עליונה לפינה הימנית-תחתונה).
-3. `Ctrl+C` (Mac: `Cmd+C`).
-4. ב-Google Docs: `Ctrl+V`. הטבלה נכנסת כטבלה אמיתית עם העיצוב הנכון.
