@@ -634,4 +634,75 @@
 
 ---
 
+## Fig-28 – ERD (Entity-Relationship Diagram) של מסד הנתונים
+
+- **פרק**: 22 — סעיף 22.2.
+- **מיקום בקובץ**: `22-database.md`, בסוף סעיף 22.2.
+- **סוג**: ERD (Crow's Foot notation).
+- **תיאור מפורט**: 4 ישויות (טבלאות) במלבנים מעוגלים, עם
+  קשרי 1:N:
+  - **`torrents`** במרכז העליון — מציינים את כל השדות
+    (id PK, info_hash, name, size, started_at, completed_at,
+    total_time_seconds, final_status, piece_algorithm,
+    peer_algorithm). PK מסומן במפתח קטן.
+  - **`performance_stats`** בצד ימין-תחתון — שדות (id PK,
+    torrent_id FK, avg_speed, peak_speed, avg_peers,
+    choke_cycles). FK מסומן בחץ דק.
+  - **`algorithm_stats`** בצד שמאל-תחתון — שדות (id PK,
+    torrent_id FK, piece_index, selected_as_rarest,
+    choke_count, unchoke_count).
+  - **`events`** מתחת ל-torrents — שדות (id PK, torrent_id
+    FK, timestamp, event_type, description).
+  - **קשרים** (Crow's Foot):
+    - `torrents` 1───< `performance_stats` (1:N, אופציונלי).
+    - `torrents` 1───< `algorithm_stats` (1:N).
+    - `torrents` 1───< `events` (1:N, אופציונלי).
+  - **תווית קשר**: `"has stats"`, `"has piece stats"`,
+    `"has events"`.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-29 – DSD (Data Structure Diagram) של 4 הטבלאות
+
+- **פרק**: 22 — סעיף 22.2.
+- **מיקום בקובץ**: `22-database.md`, בסוף סעיף 22.2.
+- **סוג**: DSD — תרשים מפורט של מבנה הטבלה (column-level).
+- **תיאור מפורט**: 4 טבלאות כמלבנים, כל אחת מציגה את
+  עמודותיה בעמודה אחת, עם **שלוש קטגוריות מסומנות בצבע**:
+  - **PK** (Primary Key) — רקע כחול בהיר + מפתח קטן.
+  - **FK** (Foreign Key) — רקע צהוב בהיר + חץ קטן.
+  - **רגיל** — לבן.
+  לכל עמודה מצוין הטיפוס (`TEXT`, `INTEGER`, `REAL`,
+  `DATETIME`) ומגבלות (`NOT NULL`, `DEFAULT ...`,
+  `AUTOINCREMENT`).
+  פריסה: `torrents` בצד שמאל; שלוש הטבלאות הקשורות (perfornance,
+  algorithm, events) בצד ימין, עם חצים אופקיים המראים את
+  ה-FK references.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-30 – גרף השוואת אלגוריתמים (אחרי ניסויים)
+
+- **פרק**: 24 — סעיף 24.2.6.
+- **מיקום בקובץ**: `24-testing-evaluation.md`, בסוף סעיף
+  24.2.6.
+- **סוג**: Bar chart with error bars (matplotlib/Excel).
+- **תיאור מפורט**: גרף עמודות זוגי המשווה את שתי התצורות
+  על פני 5 KPIs קריטיים:
+  - **ציר X**: 5 KPIs — Total Time, Avg Speed, Peak Speed,
+    Avg Peers, Choke Cycles.
+  - **לכל KPI שני עמודות צמודות**: כחול = תצורה A
+    (rarest_first + tit_for_tat), אפור = תצורה B (random +
+    round_robin).
+  - **גובה העמודה** = ממוצע של 5 ההרצות.
+  - **Error bars** = ± סטיית תקן.
+  - **כוכבית** (*) מעל זוגות שבהם ה-t-test מצביע על מובהקות
+    סטטיסטית (p < 0.05).
+  - **מקרא** בצד ימין למעלה.
+- **סטטוס**: דרוש (אחרי שיבוצעו הניסויים).
+
+---
+
 <!-- פריטים נוספים יתווספו עם התקדמות כתיבת הפרקים -->
