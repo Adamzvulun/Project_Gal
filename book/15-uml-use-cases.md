@@ -184,7 +184,7 @@ pipes, לא file descriptors משותפים.
 ## 15.6 עץ מודולים
 
 ```
-Project_Gal/
+תיקיית הפרויקט/
 ├── python_engine/                    Engine (Python 3.8+)
 │   ├── api_server.py        (509)    Flask REST API + SQLite
 │   ├── download_manager.py  (891)    Download + algorithms

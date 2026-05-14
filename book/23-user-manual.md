@@ -12,16 +12,17 @@
 
 ## התקנה והפעלה
 
+לאחר חילוץ תיקיית הפרויקט למחשב:
+
 **Linux / macOS**:
 
 ```bash
-git clone <repo-url> Project_Gal
 cd Project_Gal
 chmod +x start.sh
 ./start.sh
 ```
 
-**Windows**: הקלקה כפולה על `start.bat`, או הרצה מ-CMD.
+**Windows**: הקלקה כפולה על `start.bat` שבתיקיית הפרויקט.
 
 הסקריפט מבצע: בדיקה והתקנה אוטומטית של Python ו-JDK
 (דרך apt / dnf / pacman / brew / winget בהתאם ל-OS),

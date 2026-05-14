@@ -95,8 +95,8 @@ pandoc \
 
 rm -f "$TMP"
 
-# ---------- Step 3. Post-process: wire header/footer into sectPr ----------
-echo "Post-processing docx (wiring header/footer)..."
+# ---------- Step 3. Post-process: wire header/footer + force LTR on code blocks ----------
+echo "Post-processing docx (wiring header/footer + LTR code blocks)..."
 OUTPUT_DOCX="$OUTPUT" python3 << 'PYEOF'
 import os, re, zipfile, shutil
 
@@ -148,6 +148,40 @@ def inject_into_sectpr(match):
     return f'<w:sectPr>{hdr_ref}{ftr_ref}{inner}</w:sectPr>'
 
 patched = re.sub(r'<w:sectPr>(.*?)</w:sectPr>', inject_into_sectpr, patched, flags=re.DOTALL)
+
+# ---------- Force LTR on SourceCode paragraphs ----------
+# pandoc injects <w:bidi/> into every paragraph because of `dir: rtl`.
+# For SourceCode paragraphs we must override this to LTR.
+# Strategy: in every <w:p> that uses pStyle="SourceCode", replace
+# <w:bidi/> (no value -> defaults to RTL) with <w:bidi w:val="0"/> (LTR).
+def force_ltr_in_sourcecode(match):
+    para = match.group(0)
+    # Remove any explicit <w:bidi/> inside this paragraph's pPr
+    para = re.sub(r'<w:bidi\s*/>', '', para)
+    # Inject explicit LTR bidi flag right after the pStyle line
+    para = re.sub(
+        r'(<w:pStyle w:val="SourceCode"\s*/>)',
+        r'\1<w:bidi w:val="0"/>',
+        para, count=1)
+    return para
+
+# Match every <w:p>...SourceCode...</w:p> block
+patched = re.sub(
+    r'<w:p>(?:(?!</w:p>).)*?<w:pStyle w:val="SourceCode"\s*/>(?:(?!</w:p>).)*?</w:p>',
+    force_ltr_in_sourcecode,
+    patched, flags=re.DOTALL)
+
+# Also remove <w:rtl/> from runs inside SourceCode paragraphs
+# (they're added when text contains characters that pandoc thinks are RTL)
+def strip_rtl_in_sourcecode(match):
+    para = match.group(0)
+    para = re.sub(r'<w:rtl\s*/>', '', para)
+    return para
+
+patched = re.sub(
+    r'<w:p>(?:(?!</w:p>).)*?<w:pStyle w:val="SourceCode"\s*/>(?:(?!</w:p>).)*?</w:p>',
+    strip_rtl_in_sourcecode,
+    patched, flags=re.DOTALL)
 
 with open(doc_path, 'w', encoding='utf-8') as f:
     f.write(patched)
