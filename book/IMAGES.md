@@ -175,4 +175,63 @@
 
 ---
 
+## Fig-08 – תרשים מודל איום (Threat Model Diagram)
+
+- **פרק**: 12 (אבטחת מידע) — סעיף 12.1.1.
+- **מיקום בקובץ**: `12-security.md`, בסוף סעיף 12.1.1 (לפני
+  טבלת וקטורי האיום ב-12.1.2).
+- **סוג**: תרשים מודל איום (Trust-Boundary Diagram).
+- **תיאור מפורט**: התרשים מציג את **המערכת כתיבה מרכזית** עם
+  גבולות אמון (trust boundaries) מסומנים בקווים מקווקווים, ו-3
+  מקורות איום חיצוניים:
+  - **תיבה מרכזית** (`BitTorrent Client`) — מחולקת לשני
+    תת-איזורים: `Java GUI` ו-`Python Engine`, עם קו ירוק
+    דק (Trust Boundary פנימי = loopback).
+  - **שחקן עוין 1**: `Malicious Peer` — תיבה אדומה, מחוץ
+    לגבול האמון; חץ דו-כיווני אדום אליה עם תווית `TCP/BEP-3
+    (T1–T7)`.
+  - **שחקן עוין 2**: `Compromised Tracker` — תיבה כתומה, מחוץ
+    לגבול האמון; חץ דו-כיווני כתום אליה עם תווית `HTTP/HTTPS
+    (T8, T11)`.
+  - **שחקן עוין 3**: `Network Attacker (MITM/Eavesdropper)` —
+    תיבה צהובה הממוקמת **על גבי החצים** של שני השחקנים
+    הקודמים, עם תווית `T9, T10`.
+  - בכל חץ צמודה רשימה של מזהי האיום (T1–T11) שהוא נושא,
+    בהתאמה לטבלה ב-12.1.2.
+  - מקרא צבעים: אדום=peer, כתום=tracker, צהוב=רשת,
+    ירוק=loopback פנימי.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-09 – תרשים זרימת הגנה (Defense Flow Diagram)
+
+- **פרק**: 12 (אבטחת מידע) — סעיף 12.1.6.
+- **מיקום בקובץ**: `12-security.md`, בסוף סעיף 12.1.6 (לפני
+  טבלת הסיכום ב-12.1.7).
+- **סוג**: תרשים זרימה (Flowchart).
+- **תיאור מפורט**: התרשים מציג את **שמונת שכבות ההגנה** כשרשרת
+  decision-points, החל מקבלת ה-handshake וכלה בכתיבה לדיסק.
+  כל שלב הוא רומבוס (החלטה) או מלבן (פעולה); כל החלטה שלילית
+  ("FAIL") מוליכה לתיבת `Reject + report to SecurityManager`,
+  וכל החלטה חיובית ("OK") ממשיכה לשלב הבא:
+  1. **Handshake validation** (אורך 68, pstr, info_hash) →
+     FAIL ⇒ `PeerConnectionError`.
+  2. **Message length ≤ 2 MB?** → FAIL ⇒ `protocol_violation`.
+  3. **Valid msg_id (0–8)?** → FAIL ⇒ drop silently.
+  4. **piece_index in range?** → FAIL ⇒ `protocol_violation`.
+  5. **Block buffered into piece**.
+  6. **All blocks received?** → לא: חזרה לשלב 2 לקריאת הודעה
+     הבאה; כן: המשך.
+  7. **SHA-1 == expected_hash?** → FAIL ⇒
+     `report_hash_failure` → אם `should_ban` ⇒ ban.
+  8. **Write piece to disk**.
+  - בצד התיבות הרלוונטיות תוצג כתובית עם הקובץ והפונקציה
+    האחראית (`peer_connection.py:_receive_handshake`,
+    `piece_manager.py:verify_hash`, וכו').
+  - מקרא: ירוק=זרימה תקינה, אדום=זרימת כשל/באן.
+- **סטטוס**: דרוש.
+
+---
+
 <!-- פריטים נוספים יתווספו עם התקדמות כתיבת הפרקים -->
