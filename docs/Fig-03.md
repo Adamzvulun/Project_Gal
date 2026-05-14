@@ -53,27 +53,29 @@ flowchart LR
 
 ---
 
-## שלוש שכבות התקשורת
+## שלוש שכבות הרשת
 
-| צבע | שכבה | פרוטוקול | פורט | שימוש |
-|---|---|---|---|---|
-| 🟢 **ירוק** | Local IPC | HTTP / JSON | `localhost:5000` | GUI ↔ Engine (REST) — תמיד על loopback בלבד |
-| 🔵 **כחול** | HTTP Tracker | HTTP / HTTPS עם תשובה ב-Bencode | `80` / `443` | Engine ↔ Tracker — `announce` תקופתי |
-| 🟠 **כתום** | Peer Wire | TCP raw + BEP-3 | `6881` + דינמי | Engine ↔ Peers — `handshake`, `BITFIELD`, `REQUEST`, `PIECE`, `HAVE`, `CHOKE`/`UNCHOKE` |
+| שכבה | פרוטוקול | פורט |
+|---|---|---|
+| Local IPC | HTTP / JSON | `localhost:5000` |
+| HTTP Tracker | HTTP / HTTPS עם Bencode | `80` / `443` |
+| Peer Wire | TCP / BEP-3 | `6881` + Dynamic |
 
-> **הערה**: רק 5 peers מוצגים כייצוג סכמטי של ה-swarm. בפועל ה-`Download` יכול לנהל עד עשרות חיבורים מקבילים (`max_workers` מוגבל בקוד).
+הערה: רק 5 peers מוצגים בתרשים כייצוג סכמטי של ה-swarm. בפועל
+`Download` יכול לנהל עד עשרות חיבורים מקבילים (`max_workers`
+מוגבל בקוד).
 
 ---
 
-## מקור לאימות (קוד)
+## מקור לאימות מול הקוד
 
-| ערך בתרשים | מיקום בקוד |
-|---|---|
-| `localhost:5000` | `python_engine/api_server.py:499` — `run_server(host='127.0.0.1', port=5000)` |
-| `port 6881` (BitTorrent default) | `python_engine/tracker_client.py:23` — `DEFAULT_PORT = 6881` |
-| TCP פתיחת חיבור ל-peer | `python_engine/peer_connection.py:166` — `asyncio.open_connection(self.ip, self.port)` |
-| Handshake 68 בתים | `python_engine/peer_connection.py:20` — `HANDSHAKE_LEN = 68` |
-| `Bencode response` מ-tracker | `python_engine/tracker_client.py:97-128` — parser של רשימת peers בפורמט compact/dict |
+| ערך | קובץ | שורה |
+|---|---|---|
+| `localhost:5000` | `python_engine/api_server.py` | 499 |
+| `DEFAULT_PORT = 6881` | `python_engine/tracker_client.py` | 23 |
+| `asyncio.open_connection` | `python_engine/peer_connection.py` | 166 |
+| `HANDSHAKE_LEN = 68` | `python_engine/peer_connection.py` | 20 |
+| Parser תשובת tracker (Bencode) | `python_engine/tracker_client.py` | 97-128 |
 
 ---
 

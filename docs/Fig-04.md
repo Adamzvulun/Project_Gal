@@ -51,10 +51,10 @@ flowchart TB
 
 | צורה | משמעות |
 |---|---|
-| ⬭ ירוק | התחלה |
-| ▭ כחול | פעולה / קריאת מתודה |
-| ⬭ סגול | קישור לחלק הבא |
-| ▭ אדום + חץ מקווקו | טיפול בחריגה |
+| אובאל ירוק | התחלה |
+| מלבן כחול | פעולה / קריאת מתודה |
+| אובאל סגול | קישור לחלק הבא |
+| מלבן אדום (חץ מקווקו) | טיפול בחריגה |
 
 ---
 
@@ -115,32 +115,34 @@ flowchart TB
 
 | צורה | משמעות |
 |---|---|
-| ⬭ סגול | קישור מהחלק הקודם |
-| ⬭ ירוק | סיום |
-| ▭ כחול | פעולה / קריאת מתודה |
-| ⬨ כתום | החלטה / תנאי |
-| ▭ אדום + חץ מקווקו | טיפול בחריגה |
+| אובאל סגול | קישור מהחלק הקודם |
+| אובאל ירוק | סיום |
+| מלבן כחול | פעולה / קריאת מתודה |
+| מעוין כתום | החלטה / תנאי |
+| מלבן אדום (חץ מקווקו) | טיפול בחריגה |
 
 ---
 
 ## טבלת אימות מול הקוד
 
-| שלב | פעולה | מקור (line) | חלק |
-|---|---|---|---|
-| 1 | אתחול `TrackerClient` עם `port=6881` | `download_manager.py:207-212` | א' |
-| 2 | `announce(event='started')` ראשוני | `download_manager.py:217-218` | א' |
-| 3 | הוספת peers ל-`_known_peers` | `download_manager.py:219-221` | א' |
-| 4 | יצירת tasks ברקע: `_choke_loop`, `_keep_alive_loop` | `download_manager.py:225-226` | א' |
-| 5 | `await start_periodic_announce(callback)` | `download_manager.py:229-231` | א' |
-| 6 | `_connect_to_peers` ראשוני (non-blocking) | `download_manager.py:234` | א' |
-| 7 | לולאה ראשית | `download_manager.py:238` | ב' |
-| 7a | `reset_stale_pieces(PIECE_REQUEST_TIMEOUT=30)` | `download_manager.py:240`, `:33` | ב' |
-| 7b | `_request_pieces()` | `download_manager.py:242` | ב' |
-| 7c | `await sleep(0.1)` | `download_manager.py:243` | ב' |
-| 7d | כל 15 שניות: cleanup + reconnect | `download_manager.py:247-250`, `:34` | ב' |
-| 7e | `_update_speed` + `tracker.update_stats` | `download_manager.py:253-258` | ב' |
-| 8 | אם `is_complete` → `_complete_download` | `download_manager.py:260-261` | ב' |
-| 9 | `finally: _save_state()` | `download_manager.py:269-270` | ב' |
+| פעולה | קובץ | שורה |
+|---|---|---|
+| אתחול `TrackerClient` (port=6881) | `download_manager.py` | 207-212 |
+| `announce(event='started')` ראשוני | `download_manager.py` | 217-218 |
+| הוספת peers ל-`_known_peers` | `download_manager.py` | 219-221 |
+| `_choke_loop` + `_keep_alive_loop` ברקע | `download_manager.py` | 225-226 |
+| `start_periodic_announce(callback)` | `download_manager.py` | 229-231 |
+| `_connect_to_peers` ראשוני | `download_manager.py` | 234 |
+| תנאי הלולאה הראשית | `download_manager.py` | 238 |
+| `reset_stale_pieces(30s)` | `download_manager.py` | 240 |
+| `PIECE_REQUEST_TIMEOUT = 30` | `download_manager.py` | 33 |
+| `_request_pieces()` | `download_manager.py` | 242 |
+| `await sleep(0.1)` | `download_manager.py` | 243 |
+| cleanup + reconnect (כל 15s) | `download_manager.py` | 247-250 |
+| `PEER_CLEANUP_INTERVAL = 15` | `download_manager.py` | 34 |
+| `_update_speed` + `tracker.update_stats` | `download_manager.py` | 253-258 |
+| `_complete_download` | `download_manager.py` | 260-261 |
+| `finally: _save_state()` | `download_manager.py` | 269-270 |
 
 ---
 

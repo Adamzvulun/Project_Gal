@@ -78,19 +78,19 @@ flowchart TB
 - **חץ מקווקו (`-.->`)**: תקשורת רשת.
 - **כוכבית ליד `PeerConnection *`**: ריבוי instances — אחד לכל peer פעיל.
 
-## מקור לאימות (קוד)
+## מקור לאימות מול הקוד
 
-| מודול בתרשים | קובץ מקור | מחלקה ראשית |
+| מחלקה | קובץ | שורה |
 |---|---|---|
-| Flask REST API | `python_engine/api_server.py` | (Flask app) |
-| DownloadManager | `python_engine/download_manager.py` | `DownloadManager` (line 816) |
-| Download | `python_engine/download_manager.py` | `Download` (line 87) |
-| PieceManager | `python_engine/piece_manager.py` | `PieceManager` (line 148) |
-| PeerConnection | `python_engine/peer_connection.py` | `PeerConnection` (line 98) |
-| TrackerClient | `python_engine/tracker_client.py` | `TrackerClient` (line 135) |
-| SecurityManager | `python_engine/security.py` | `SecurityManager` (line 79) |
-| TorrentMetadata | `python_engine/torrent_metadata.py` | `TorrentMetadata` (line 31) |
-| Bencode | `python_engine/bencode.py` | `encode` / `decode` |
+| Flask app | `python_engine/api_server.py` | — |
+| `DownloadManager` | `python_engine/download_manager.py` | 816 |
+| `Download` | `python_engine/download_manager.py` | 87 |
+| `PieceManager` | `python_engine/piece_manager.py` | 148 |
+| `PeerConnection` | `python_engine/peer_connection.py` | 98 |
+| `TrackerClient` | `python_engine/tracker_client.py` | 135 |
+| `SecurityManager` | `python_engine/security.py` | 79 |
+| `TorrentMetadata` | `python_engine/torrent_metadata.py` | 31 |
+| `encode` / `decode` | `python_engine/bencode.py` | — |
 
 ---
 
