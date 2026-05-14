@@ -78,19 +78,64 @@ flowchart TB
 - **חץ מקווקו (`-.->`)**: תקשורת רשת.
 - **כוכבית ליד `PeerConnection *`**: ריבוי instances — אחד לכל peer פעיל.
 
-## מקור לאימות מול הקוד
+## מקור לאימות (קוד)
 
-| מחלקה | קובץ | שורה |
-|---|---|---|
-| Flask app | `python_engine/api_server.py` | — |
-| `DownloadManager` | `python_engine/download_manager.py` | 816 |
-| `Download` | `python_engine/download_manager.py` | 87 |
-| `PieceManager` | `python_engine/piece_manager.py` | 148 |
-| `PeerConnection` | `python_engine/peer_connection.py` | 98 |
-| `TrackerClient` | `python_engine/tracker_client.py` | 135 |
-| `SecurityManager` | `python_engine/security.py` | 79 |
-| `TorrentMetadata` | `python_engine/torrent_metadata.py` | 31 |
-| `encode` / `decode` | `python_engine/bencode.py` | — |
+<table dir="rtl" style="border-collapse:collapse;border:1pt solid #333333;font-family:'David','Times New Roman',serif;font-size:12pt;background:#FFFFFF;">
+  <thead>
+    <tr style="background-color:#DCE6F1;">
+      <th style="border:1pt solid #333333;padding:4px 10px;font-weight:bold;text-align:right;">מודול בתרשים</th>
+      <th style="border:1pt solid #333333;padding:4px 10px;font-weight:bold;text-align:right;">קובץ מקור</th>
+      <th style="border:1pt solid #333333;padding:4px 10px;font-weight:bold;text-align:right;">מחלקה ראשית</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">Flask REST API</td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>python_engine/api_server.py</code></td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">(Flask app)</td>
+    </tr>
+    <tr>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">DownloadManager</td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>python_engine/download_manager.py</code></td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>DownloadManager</code> (line 816)</td>
+    </tr>
+    <tr>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">Download</td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>python_engine/download_manager.py</code></td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>Download</code> (line 87)</td>
+    </tr>
+    <tr>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">PieceManager</td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>python_engine/piece_manager.py</code></td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>PieceManager</code> (line 148)</td>
+    </tr>
+    <tr>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">PeerConnection</td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>python_engine/peer_connection.py</code></td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>PeerConnection</code> (line 98)</td>
+    </tr>
+    <tr>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">TrackerClient</td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>python_engine/tracker_client.py</code></td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>TrackerClient</code> (line 135)</td>
+    </tr>
+    <tr>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">SecurityManager</td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>python_engine/security.py</code></td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>SecurityManager</code> (line 79)</td>
+    </tr>
+    <tr>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">TorrentMetadata</td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>python_engine/torrent_metadata.py</code></td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>TorrentMetadata</code> (line 31)</td>
+    </tr>
+    <tr>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;">Bencode</td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>python_engine/bencode.py</code></td>
+      <td style="border:0.5pt solid #999999;padding:4px 10px;text-align:right;"><code>encode</code> / <code>decode</code></td>
+    </tr>
+  </tbody>
+</table>
 
 ---
 
@@ -121,3 +166,14 @@ flowchart TB
 3. צלם מסך של התרשים.
 
 > **טיפ**: דרך 1 (Mermaid Live + PNG/SVG) נותנת את האיכות הגבוהה ביותר ואת הרקע הכי נקי.
+
+## איך להעתיק את הטבלה ל-Google Docs / Word
+
+הטבלה בקובץ זה מעוצבת ב-HTML inline-styles **שמותאמים בדיוק לסגנון הספר**
+(גבול חיצוני `#333333`, גבולות פנימיים `#999999`, רקע שורת כותרת `#DCE6F1`,
+פונט David 12pt). העיצוב נשמר אוטומטית בהעתקה:
+
+1. פתח את הקובץ ב-GitHub / VS Code Preview (בעיניים בהירות).
+2. סמן את הטבלה בעכבר (גרור מהפינה השמאלית-עליונה לפינה הימנית-תחתונה).
+3. `Ctrl+C` (Mac: `Cmd+C`).
+4. ב-Google Docs: `Ctrl+V`. הטבלה נכנסת כטבלה אמיתית עם העיצוב הנכון.
