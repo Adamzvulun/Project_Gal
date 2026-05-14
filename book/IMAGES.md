@@ -63,10 +63,11 @@
 - **סוג**: תרשים זרימה.
 - **תיאור**: שרשרת תיבות:
   Start → `Init TrackerClient` → `Announce(event='started')` →
-  `Add peers to _known_peers` → `Start _choke_loop / _keep_alive_loop / periodic_announce` →
-  כניסה ללולאה ראשית (`while not is_complete and state == RUNNING`):
-  `reset stale pieces` → `_request_pieces` → `await sleep(0.1)` →
-  בדיקה תקופתית `_cleanup_dead_peers + _connect_to_peers` →
+  `Add peers to _known_peers` → `Start _choke_loop / _keep_alive_loop / start_periodic_announce` →
+  `kick off _connect_to_peers` (initial) →
+  כניסה ללולאה ראשית (`while not piece_manager.is_complete and state == RUNNING`):
+  `reset_stale_pieces(30s)` → `_request_pieces` → `await sleep(0.1)` →
+  כל 15 שניות: `_cleanup_dead_peers + _connect_to_peers` →
   `_update_speed + tracker.update_stats`.
   ביציאה: `if is_complete → _complete_download`; תמיד
   `_save_state` ב-finally.
@@ -77,7 +78,7 @@
 
 - **פרק**: 15.9.
 - **סוג**: Sequence Diagram (UML).
-- **תיאור**: חמישה lifelines אנכיים: `Peer`, `PeerConnection`,
+- **תיאור**: ששה lifelines אנכיים: `Peer`, `PeerConnection`,
   `Download`, `PieceManager`, `SecurityManager`,
   `ThreadPoolExecutor`. הזרימה:
   1. `Peer` → `PeerConnection`: PIECE message (TCP).
@@ -115,8 +116,9 @@
   תווית `HTTP/JSON REST`.
   ב-Python: 15 מחלקות עיקריות עם הקשרים: `DownloadManager`
   ◇──► `Download` (אגרגציה); `Download` ◆──► `PieceManager`,
-  `SecurityManager`, `TrackerClient`, `Dict<PeerConnection>`
-  (קומפוזיציה); `PieceManager` ◆──► `Piece` ◆──► `Block`;
+  `SecurityManager`, `ThreadPoolExecutor` (קומפוזיציה);
+  `Download` ◇──► `TrackerClient`, `Dict<PeerConnection>`
+  (אגרגציה); `PieceManager` ◆──► `Piece` ◆──► `Block`;
   `SecurityManager` ◆──► `PeerReputation`; `PeerConnection`
   ◆──► `PeerMessage`; `TrackerClient` ──► `Peer`,
   `TrackerResponse`.
