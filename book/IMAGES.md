@@ -606,4 +606,32 @@
 
 ---
 
+## Fig-27 – Mockup of Main Window with UX Annotations
+
+- **פרק**: 20 — סעיף 20.2.
+- **מיקום בקובץ**: `20-user-interface.md`, בסוף סעיף 20.2.
+- **סוג**: סקיצת mockup (wireframe) של S1, עם תוויות UX.
+- **תיאור מפורט**: סקיצה סכמטית של החלון הראשי בגודל 900×600,
+  עם **קווי הנחיה** המסמנים את ארבעת אזורי ה-UI ועם
+  callouts (חיצים+תוויות) המסבירים את התפקיד של כל אזור:
+  - **אזור 1 — Toolbar (North)**: callout עם תווית
+    `"Actions toolbar (always visible)"` ופירוט: Add
+    Torrent / Pause / Resume / Cancel / History /
+    Statistics + 2 Combos.
+  - **אזור 2 — Downloads Table (Center top, 70%)**: callout
+    `"Live downloads with auto-refresh every 500ms"`. סימון
+    של ה-`JProgressBar` בעמודה Progress בצבע שמתחלף
+    מ-כחול לירוק עם השלמה.
+  - **אזור 3 — Event Log (Center bottom, 30%)**: callout
+    `"Real-time events from GUI and Engine ([engine] prefix)"`.
+  - **אזור 4 — Status Bar (South)**: callout
+    `"Non-blocking status"`. דוגמת תוכן: `"5 downloads
+    (3 active)"`.
+  - **חצים חיצוניים** המראים: ה-Combos זורמים ל-`POST
+    /torrents`, ה-table polling זורם ל-`GET /torrents`,
+    ה-Event Log polling זורם ל-`GET /torrents/<id>/logs`.
+- **סטטוס**: דרוש.
+
+---
+
 <!-- פריטים נוספים יתווספו עם התקדמות כתיבת הפרקים -->
