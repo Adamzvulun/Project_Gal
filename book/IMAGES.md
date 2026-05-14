@@ -234,4 +234,204 @@
 
 ---
 
+## Fig-10 – Flowchart של `_download_loop`
+
+- **פרק**: 15 — סעיף 15.1.2.
+- **מיקום בקובץ**: `15-uml-use-cases.md`, בסוף סעיף 15.1.2.
+- **סוג**: תרשים זרימה (Flowchart).
+- **תיאור מפורט**: הזרימה הראשית של `Download._download_loop`
+  כשרשרת תיבות (Start → Init → ... → End). תיבות מרכזיות:
+  `Init TrackerClient`, `Announce(event='started')`, `Add peers
+  to _known_peers`, `Start _choke_loop`, `Start _keep_alive_loop`,
+  `Start periodic_announce`, ולולאה ראשית עם תנאי
+  `is_complete OR state != RUNNING` כיציאה. בתוך הלולאה: `reset
+  stale pieces`, `_request_pieces`, `await asyncio.sleep(0.1)`,
+  בדיקה תקופתית `_cleanup_dead_peers + _connect_to_peers`,
+  `_update_speed + tracker.update_stats`. מצב סופי: `if is_complete
+  → _complete_download (event='completed')`; תמיד `_save_state`
+  בסיום (finally).
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-11 – Sequence Diagram: קבלת PIECE מ-peer
+
+- **פרק**: 15 — סעיף 15.5.4.
+- **מיקום בקובץ**: `15-uml-use-cases.md`, בסוף סעיף 15.5.4.
+- **סוג**: Sequence Diagram (UML).
+- **תיאור מפורט**: התרשים מציג חמש lifelines אנכיות זה לצד זה:
+  `Peer (remote)`, `PeerConnection`, `Download`, `PieceManager`,
+  `SecurityManager`, ו-`ThreadPoolExecutor`. הזרימה:
+  1. `Peer` → `PeerConnection`: שלח PIECE message (TCP).
+  2. `PeerConnection._read_message`: קריאת length + payload.
+  3. `PeerConnection._handle_message`: זיהוי MessageType.PIECE,
+     עדכון bytes_downloaded.
+  4. `PeerConnection.on_message` → `Download._on_peer_message`.
+  5. `Download` → `PieceManager.submit_block(piece_idx, offset,
+     data)`: כתיבה ל-`Piece._data[offset:]`.
+  6. אם `is_complete`: `Download` → `ThreadPoolExecutor.submit(
+     piece_manager.verify_piece, idx)`.
+  7. ענף אחד: SUCCESS → `SecurityManager.report_successful_piece`,
+     `_write_piece_sync` (ב-pool), broadcast HAVE לכל החיבורים.
+  8. ענף שני: FAIL → `SecurityManager.report_hash_failure`, אם
+     `should_ban` → `_ban_peer`, סגירת חיבור.
+  9. סיום: `Download._request_from_peer` → לבחור piece חדש →
+     שלח REQUEST.
+  הזמן עובר מלמעלה למטה; חצים synchronous מסומנים בקו מלא,
+  callbacks asynchronous בקו מקווקו.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-12 – Use Case Diagram
+
+- **פרק**: 15 — סעיף 15.7.
+- **מיקום בקובץ**: `15-uml-use-cases.md`, בסוף סעיף 15.7.
+- **סוג**: Use Case Diagram (UML).
+- **תיאור מפורט**: מלבן גדול במרכז המסמל את System Boundary
+  של "BitTorrent Client". בתוכו 6 ביצים אופקיות (UCs):
+  `Add Torrent (UC-01)`, `Pause/Resume/Cancel (UC-02)`,
+  `Show History (UC-03)`, `Show Algorithm Stats (UC-04)`,
+  `Configure Algorithms (UC-05)`, `Exchange Data with Peer
+  (UC-06)`. בצד שמאל איש סטיק (`User`) מחובר ל-UC-01..05
+  בקווים פשוטים. בצד ימין שני סוגים של אקטורים-מערכת:
+  `Tracker` מחובר ל-UC-01 (init) ול-UC-06 (announce); `Peer
+  (external)` מחובר ל-UC-06. בנוסף יחס `<<include>>` מ-UC-01
+  ל-UC-05 (האלגוריתמים נקבעים כחלק מ-Add Torrent).
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-13 – Class Diagram (Engine, package level)
+
+- **פרק**: 15 — סעיף 15.9.
+- **מיקום בקובץ**: `15-uml-use-cases.md`, בסוף סעיף 15.9.
+- **סוג**: Class Diagram (UML), רמת package.
+- **תיאור מפורט**: 8 חבילות (modules) של ה-Engine כתיבות
+  מלבניות: `api_server`, `download_manager`, `piece_manager`,
+  `peer_connection`, `tracker_client`, `torrent_metadata`,
+  `bencode`, `security`. חצים `<<uses>>` מסומנים בקו מקווקו
+  עם ראש פתוח:
+  - `api_server` → `download_manager` (import + calls)
+  - `download_manager` → `piece_manager`, `peer_connection`,
+    `tracker_client`, `security`, `torrent_metadata`
+  - `peer_connection` → (none, רק stdlib)
+  - `piece_manager` → `hashlib` (stdlib)
+  - `tracker_client` → `bencode`, `aiohttp`
+  - `torrent_metadata` → `bencode`
+  - `security` → (stdlib)
+  - `api_server` → `flask`, `sqlite3`
+  בכל תיבת חבילה: שמות המחלקות החשובות בתוכה (כאות אבן 8pt).
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-14 – Class Diagram (GUI, package level)
+
+- **פרק**: 15 — סעיף 15.9.
+- **מיקום בקובץ**: `15-uml-use-cases.md`, בסוף סעיף 15.9.
+- **סוג**: Class Diagram (UML), רמת package.
+- **תיאור מפורט**: 3 מחלקות הראשיות של ה-GUI כתיבות מלבניות
+  מפורטות:
+  - `TorrentClientGUI extends JFrame` — שדות עיקריים
+    (`apiService`, `tableModel`, `downloadTable`, `logArea`,
+    `scheduler`, `logSeqTracker`), מתודות עיקריות
+    (`startStatusUpdater`, `refreshStatus`, `updateTable`,
+    `onAddTorrent`, `onPause/Resume/Cancel`, `onShowHistory`,
+    `onShowStats`).
+  - `ApiService` — שדה `baseUrl`, `HttpClient`, מתודות
+    (`startDownload`, `getStatus()`, `getStatus(id)`,
+    `pause/resume/cancel`, `getHistory`, `clearHistory`,
+    `getAlgorithmStats`, `getStatsSummary`, `getEvents`,
+    `getLogs`, `isServerAvailable`). מחלקות מקוננות:
+    `TorrentStatus`, `ApiException`.
+  - `AlgorithmStatsDialog extends JDialog` — שדות
+    (`apiService`, `torrentId`), מחלקה מקוננת `BarChartPanel
+    extends JPanel`.
+  חצים: `TorrentClientGUI` ◇──► `ApiService` (composition),
+  `TorrentClientGUI` ──► `AlgorithmStatsDialog` (creates),
+  `AlgorithmStatsDialog` ──► `ApiService` (uses).
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-15 – Design Class Diagram
+
+- **פרק**: 15 — סעיף 15.10.
+- **מיקום בקובץ**: `15-uml-use-cases.md`, בסוף סעיף 15.10.
+- **סוג**: Design Class Diagram (DCD) מפורט.
+- **תיאור מפורט**: ארבע מחלקות מרכזיות עם **כל החתימות
+  המלאות** (תפקיד + פרמטרים + טיפוסי החזרה):
+  - `Download` — שדות פרטיים וציבוריים מלאים (id, state,
+    piece_algorithm, peer_algorithm, piece_manager, security,
+    stats, _connections, _executor, _main_task, _choke_task,
+    _keep_alive_task, _on_progress/complete/state_change);
+    מתודות (`async start/pause/resume/cancel`, `get_status`,
+    `get_logs`, `on_progress/complete/state_change`,
+    `_download_loop`, `_request_pieces`, `_choke_loop`,
+    `_keep_alive_loop`, `_tit_for_tat_unchoke`,
+    `_round_robin_unchoke`, `_on_peer_message`,
+    `_save_state`).
+  - `PieceManager` — שדות (num_pieces, piece_length, total_size,
+    pieces, _peer_frequency, _peer_pieces, rarest_selections,
+    _piece_start_times, _lock); מתודות
+    (`select_piece_rarest_first`, `select_piece_random`,
+    `update_peer_have`, `update_peer_pieces`, `remove_peer`,
+    `start_piece`, `submit_block`, `verify_piece`,
+    `reset_stale_pieces`, `get_our_bitfield`).
+  - `PeerConnection` — שדות (ip, port, info_hash, our_peer_id,
+    num_pieces, _reader, _writer, _connected, _handshake_complete,
+    am_choking, am_interested, peer_choking, peer_interested,
+    peer_pieces, bytes_downloaded, download_rate); מתודות
+    (`async connect`, `_send_handshake`, `_receive_handshake`,
+    `start_message_loop`, `_message_loop`, `_read_message`,
+    `_handle_message`, `send_interested/not_interested/
+    choke/unchoke/have/bitfield/request/piece`, `disconnect`).
+  - `SecurityManager` — שדות (_peer_reputations, _banned_peers,
+    _events, _event_callbacks); מתודות (`verify_piece`,
+    `report_hash_failure/successful_piece/protocol_violation/
+    invalid_message/timeout`, `validate_message_length`,
+    `validate_piece_index`, `is_peer_banned`, `get_peer_reputation`,
+    `get_recent_events`, `on_event`, `_ban_peer`, `_log_event`).
+  מתחת לכל מחלקה: חיצי composition (◆──) ל-Piece, Block,
+  PeerReputation בהתאמה.
+- **סטטוס**: דרוש.
+
+---
+
+## Fig-16 – Full Class Diagram (כל המערכת)
+
+- **פרק**: 15 — סעיף 15.11.
+- **מיקום בקובץ**: `15-uml-use-cases.md`, בסוף סעיף 15.11.
+- **סוג**: Class Diagram (UML), כל המערכת.
+- **תיאור מפורט**: תרשים על פני שני עמודים A3 (אנכי) המציג
+  את **כל המחלקות** מ-Python ומ-Java באותו מקום, מחולק לשני
+  swimlanes אופקיים:
+  - **Swimlane עליון** — `Python Engine`. מציג את 15
+    המחלקות: `DownloadManager`, `Download`, `DownloadStats`,
+    `DownloadState (enum)`, `AlgorithmType (enum)`,
+    `PieceManager`, `Piece`, `Block`, `PieceStatus (enum)`,
+    `PeerConnection`, `PeerMessage`, `MessageType (enum)`,
+    `TrackerClient`, `Peer`, `TrackerResponse`,
+    `TorrentMetadata`, `FileInfo`, `SecurityManager`,
+    `PeerReputation`, `SecurityEvent`.
+  - **Swimlane תחתון** — `Java GUI`. מציג את 3 המחלקות
+    הראשיות ושתי המקוננות: `TorrentClientGUI`, `ApiService`,
+    `AlgorithmStatsDialog`, `TorrentStatus` (nested),
+    `BarChartPanel` (nested), `ApiException` (nested).
+  - **גשר בין שני ה-swimlanes**: חץ עבה אופקי עם תווית
+    `HTTP/JSON REST` המקשר את `ApiService` ל-`Flask routes`
+    ב-`api_server`.
+  - **חיצים**:
+    - composition (יהלום מלא): `Download` ◆── `PieceManager`,
+      `SecurityManager`, `DownloadStats`, `ThreadPoolExecutor`.
+    - aggregation (יהלום ריק): `Download` ◇── `TrackerClient`,
+      `_connections: Map<str, PeerConnection>`.
+    - inheritance (משולש): `TorrentClientGUI` ──▷ `JFrame`,
+      `AlgorithmStatsDialog` ──▷ `JDialog`, `BarChartPanel`
+      ──▷ `JPanel`, וכל ה-Errors ──▷ `Exception`.
+- **סטטוס**: דרוש.
+
+---
+
 <!-- פריטים נוספים יתווספו עם התקדמות כתיבת הפרקים -->
