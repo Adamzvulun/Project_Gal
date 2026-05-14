@@ -23,16 +23,20 @@
 בין מודולים. דוגמה לבדיקת `select_piece_rarest_first`:
 
 ```python
-def test_rarest_first_chooses_minimum_frequency():
-    hashes = [b'\x00' * 20] * 4
-    pm = PieceManager(num_pieces=4, piece_length=16384,
-                      total_size=65536, piece_hashes=hashes)
-    pm.update_peer_pieces("A:6881", [True, True, False, False])
-    pm.update_peer_pieces("B:6881", [True, True, True, False])
-    pm.update_peer_pieces("C:6881", [True, True, True, True])
-    # Frequencies: 0→3, 1→3, 2→2, 3→1 (rarest)
-    selected = pm.select_piece_rarest_first([True, True, True, True])
-    assert selected == 3
+# python_engine/tests/test_piece_manager.py
+def test_verify_hash_success(self):
+    data = b'hello world' + b'\x00' * 245  # Pad to 256
+    h = hashlib.sha1(data).digest()
+    p = Piece(index=0, length=256, expected_hash=h)
+    p.submit_block(0, data)
+    assert p.verify_hash() is True
+
+def test_verify_hash_failure(self):
+    data = b'\x00' * 256
+    wrong_hash = b'\xff' * 20
+    p = Piece(index=0, length=256, expected_hash=wrong_hash)
+    p.submit_block(0, data)
+    assert p.verify_hash() is False
 ```
 
 הרצה: `pytest python_engine/tests/ -v` (נדרש

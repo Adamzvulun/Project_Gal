@@ -19,15 +19,23 @@ Javadoc על כל מחלקה ומתודה ציבורית מרכזית.
 ב-`TorrentMetadata.__init__`:
 
 ```python
-def __init__(self, torrent_path=None, torrent_data=None):
+# python_engine/torrent_metadata.py
+def __init__(self, torrent_path: Optional[str] = None,
+             torrent_data: Optional[bytes] = None):
     if torrent_path is not None:
+        if not os.path.exists(torrent_path):
+            raise TorrentMetadataError(f"File not found: {torrent_path}")
         with open(torrent_path, 'rb') as f:
             raw_data = f.read()
     elif torrent_data is not None:
         raw_data = torrent_data
     else:
-        raise TorrentMetadataError("Must provide path or data")
-    self._metadata = bencode.decode(raw_data)
+        raise TorrentMetadataError(
+            "Must provide either torrent_path or torrent_data")
+    try:
+        self._metadata = bencode.decode(raw_data)
+    except bencode.BencodeDecodeError as e:
+        raise TorrentMetadataError(f"Failed to decode torrent file: {e}")
     self._parse_metadata()
 ```
 
@@ -73,26 +81,39 @@ alive, ומריץ את לולאת בקשת ה-pieces עד שההורדה מסת�
 סיבוכיות O(N).
 
 ```python
-def select_piece_rarest_first(self, peer_pieces):
+# python_engine/piece_manager.py
+def select_piece_rarest_first(self, peer_pieces: List[bool]) -> Optional[int]:
+    """Select a piece using the rarest-first algorithm.
+
+    1. Consider only pieces that are missing AND the peer has
+    2. Find the minimum frequency among those pieces
+    3. Build a rarest set (all pieces with that frequency)
+    4. Choose one at random from the rarest set
+    """
     with self._lock:
         candidates = []
         min_freq = float('inf')
+
         for i in range(self.num_pieces):
             if self.pieces[i].status != PieceStatus.MISSING:
                 continue
             if i >= len(peer_pieces) or not peer_pieces[i]:
                 continue
+
             freq = self._peer_frequency.get(i, 0)
             if freq < min_freq:
                 min_freq = freq
                 candidates = [i]
             elif freq == min_freq:
                 candidates.append(i)
+
         if not candidates:
             return None
+
         selected = random.choice(candidates)
         self.rarest_selections[selected] = (
-            self.rarest_selections.get(selected, 0) + 1)
+            self.rarest_selections.get(selected, 0) + 1
+        )
         return selected
 ```
 
@@ -100,7 +121,9 @@ def select_piece_rarest_first(self, peer_pieces):
 SHA-1 לפני כתיבה לדיסק:
 
 ```python
+# python_engine/piece_manager.py
 def verify_hash(self) -> bool:
+    """Verify the piece data matches the expected SHA-1 hash."""
     actual_hash = hashlib.sha1(bytes(self._data)).digest()
     return actual_hash == self.expected_hash
 ```

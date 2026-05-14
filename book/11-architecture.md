@@ -86,7 +86,15 @@ Peer Wire Protocol של BEP-3). הפורט `6881` מוצהר ל-tracker
 ```python
 # python_engine/api_server.py
 def _run_async(coro, timeout=60):
-    """Bridge: call asyncio coroutine from Flask thread."""
+    """Submit a coroutine to the persistent event loop and wait for the result.
+
+    Args:
+        coro: The coroutine to run.
+        timeout: Maximum seconds to wait for result.
+
+    Returns:
+        The coroutine's return value.
+    """
     if _loop is None or not _loop.is_running():
         _start_event_loop()
     future = asyncio.run_coroutine_threadsafe(coro, _loop)
@@ -192,10 +200,11 @@ peer = 4 בתים IP + 2 בתים port), `complete` ו-`incomplete`.
 ```python
 # python_engine/peer_connection.py
 async def _send_handshake(self):
+    """Send the BitTorrent handshake message."""
     handshake = (
         bytes([PROTOCOL_STRING_LEN]) +
         PROTOCOL_STRING +
-        b'\x00' * 8 +
+        b'\x00' * 8 +  # Reserved bytes
         self.info_hash +
         self.our_peer_id
     )

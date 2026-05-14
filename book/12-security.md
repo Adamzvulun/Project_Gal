@@ -17,12 +17,27 @@ data פגום או מציפים בהודעות, tracker שנפרץ ועלול ל
 
 ```python
 # python_engine/peer_connection.py
-async def _read_message(self):
-    length_bytes = await asyncio.wait_for(
-        self._reader.readexactly(4), timeout=REQUEST_TIMEOUT*2)
+async def _read_message(self) -> Optional[PeerMessage]:
+    """Read a single length-prefixed message from the peer."""
+    try:
+        length_bytes = await asyncio.wait_for(
+            self._reader.readexactly(4),
+            timeout=REQUEST_TIMEOUT * 2
+        )
+    except asyncio.TimeoutError:
+        raise PeerConnectionError("Read timeout")
+    except asyncio.IncompleteReadError:
+        return None  # Connection closed
+
     length = struct.unpack('!I', length_bytes)[0]
-    if length > MAX_MESSAGE_SIZE:        # 2 MB
-        raise PeerConnectionError(f"Message too large: {length}")
+
+    if length == 0:
+        return PeerMessage(MessageType.KEEP_ALIVE)
+
+    if length > MAX_MESSAGE_SIZE:
+        raise PeerConnectionError(
+            f"Message too large: {length} bytes (max {MAX_MESSAGE_SIZE})"
+        )
 ```
 
 בדיקת הגודל מתבצעת לפני הקצאת ה-buffer, כך ש-peer זדוני
@@ -56,11 +71,15 @@ async def _read_message(self):
    להתחבר אליו שוב:
 
 ```python
+# python_engine/security.py
+MAX_HASH_FAILURES_PER_PEER = 3
+MAX_PROTOCOL_VIOLATIONS_PER_PEER = 5
+
 @property
 def should_ban(self) -> bool:
-    if self.hash_failures >= MAX_HASH_FAILURES_PER_PEER:  # 3
+    if self.hash_failures >= MAX_HASH_FAILURES_PER_PEER:
         return True
-    if self.protocol_violations >= MAX_PROTOCOL_VIOLATIONS_PER_PEER:  # 5
+    if self.protocol_violations >= MAX_PROTOCOL_VIOLATIONS_PER_PEER:
         return True
     return False
 ```
