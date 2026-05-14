@@ -483,21 +483,31 @@ loopback.
 תרחיש מלא של "מה קורה ברגע ש-peer שלח אלינו block":
 
 ```
-1. PeerConnection._read_message    ← קורא 4-byte length + payload
-2. PeerConnection._handle_message  ← message.type == PIECE
-3. PeerConnection.on_message       ← callback ← DownloadManager._on_peer_message
-4. DownloadManager._on_peer_message:
-   a. piece_manager.submit_block(piece_idx, offset, data)
-   b. אם is_complete של ה-piece:
-        verify_piece (ב-thread pool)
+1. PeerConnection._read_message     ← קורא 4-byte length + payload
+2. PeerConnection._handle_message   ← מעדכן conn.bytes_downloaded,
+                                      conn.download_rate, מפחית
+                                      _pending_requests
+3. PeerConnection.on_message        ← callback מוקצה ב-_connect_peer
+                                      ל-Download._on_peer_message
+4. Download._on_peer_message (ענף message.type == PIECE):
+   a. אם data is None — return
+   b. אם piece כבר COMPLETED — return (dedup מ-peers שונים)
+   c. piece_manager.submit_block(piece_idx, offset, data)
+   d. stats.bytes_downloaded += len(data)
+   e. אם is_complete של ה-piece (כל הבלוקים התקבלו):
+        verify_piece(idx)              ← ב-ThreadPoolExecutor
         אם OK:
            security.report_successful_piece(peer_key)
-           _write_piece_sync (ב-thread pool)
-           _broadcast_have ל-כל ה-peers האחרים
-        אחרת:
-           security.report_hash_failure(peer_key)
-           אם is_peer_banned → סיום חיבור
-   c. _request_from_peer(peer_key) ← נותן לפיר עבודה חדשה
+           _write_piece_sync(idx)      ← ב-ThreadPoolExecutor
+           ניקוי _peer_piece עבור ה-idx
+           asyncio.create_task(_broadcast_have(idx))  ← non-blocking
+           _on_progress callback (אם רשום)
+           אם piece_manager.is_complete (כל ה-pieces): state = COMPLETED
+           _request_from_peer(peer_key, conn)  ← עבודה חדשה לאותו peer
+        אחרת (verify נכשל):
+           security.report_hash_failure(peer_key, idx)
+           ניקוי _peer_piece עבור ה-idx
+           אם security.is_peer_banned(peer_key) → conn.disconnect()
 ```
 
 > **תרשים נדרש (Fig-11)**: Sequence Diagram של זרימת
@@ -512,8 +522,7 @@ Project_Gal/
 ├── python_engine/                    ← Engine (Python 3.8+)
 │   ├── __init__.py
 │   ├── __main__.py                   ← entry: python -m python_engine
-│   ├── main.py                       ← CLI mode (ללא GUI)
-│   ├── api_server.py     (510 שורות) ← Flask REST API + SQLite + bridge
+│   ├── api_server.py     (509 שורות) ← Flask REST API + SQLite + bridge
 │   ├── download_manager.py (891)     ← Download + DownloadManager + algorithms
 │   ├── piece_manager.py    (473)     ← Piece + Block + PieceManager
 │   ├── peer_connection.py  (520)     ← PeerConnection + MessageType + PeerMessage
@@ -521,6 +530,7 @@ Project_Gal/
 │   ├── torrent_metadata.py (241)     ← TorrentMetadata + FileInfo
 │   ├── bencode.py          (231)     ← encode/decode + errors
 │   ├── security.py         (326)     ← SecurityManager + PeerReputation + events
+│   ├── main.py             (190)     ← CLI mode entry (ללא GUI)
 │   └── tests/                        ← pytest tests
 │
 ├── java_gui/                         ← GUI (Java 11+, Swing)
@@ -543,8 +553,10 @@ Project_Gal/
 └── README.md / CURRENT_STATE.md      ← תיעוד מפתח
 ```
 
-הסך הכל: **~5,360 שורות קוד** (חוץ מבדיקות) — 4,002 ב-Python
-ו-1,641 ב-Java.
+הסך הכל: **5,359 שורות קוד פרודקשן** (חוץ מבדיקות) —
+**3,718 ב-Python** (תשעת המודולים שלמעלה) ו-**1,641 ב-Java**
+(שלושת מחלקות ה-GUI). ספירת `wc -l` המלאה (כולל
+`__init__.py` ו-`__main__.py` הקטנים בני 1+4 שורות) היא 5,364.
 
 ---
 
@@ -743,9 +755,12 @@ aggregation, dependency), ואת ה-multiplicity (1, 0..1, *).
   מ-Flask עוברות דרכו.
 - **קלטים**: `download_dir`, `state_dir` (ברירת מחדל
   `data/downloads` / `data/state`).
-- **פלטים**: `Download` instances; API: `add_torrent`,
-  `pause/resume/cancel_download(id)`, `get_status(id)`,
-  `get_all_status`.
+- **פלטים**: `Download` instances; API:
+  `add_torrent(torrent, piece_algo, peer_algo, download_dir=None)`,
+  `start/pause/resume/cancel_download(id)`,
+  `get_download(id) -> Optional[Download]`,
+  `get_download_status(id) -> Optional[dict]`,
+  `get_all_status() -> List[dict]`.
 - **זרימה**: `api_server.start_download` קורא ל-`add_torrent`
   → מקבל `Download` חדש → רושם בפנים → מחזיר `id` ל-Flask.
 
@@ -827,7 +842,7 @@ aggregation, dependency), ואת ה-multiplicity (1, 0..1, *).
 - **15.5** הציג את גרפי התלויות הפנימיים (Engine ו-GUI)
   ואת מנגנון IPC הבין-תהליכי.
 - **15.6** הביא עץ מודולים מלא עם שורות קוד לכל קובץ
-  (סך הכל ~5,360 שורות לא כולל tests).
+  (סך הכל ~5,360 שורות פרודקשן — 3,718 Python + 1,641 Java).
 - **15.7–15.11** הגדירו ארבעה תרשימים נדרשים (Fig-12 עד
   Fig-16) ב-`IMAGES.md` עם כתוביות ופירוט מלא.
 - **15.12** סיכם 11 מחלקות מרכזיות לפי תבנית
