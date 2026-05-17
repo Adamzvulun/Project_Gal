@@ -7,9 +7,12 @@ this file first, then the four files in the "read next" list.
 
 * **Branch**: `book-revision-v2` (renamed from `claude/book-revision-v2-SxMpj`).
   Do not switch unless explicitly told.
-* **Steps complete**: 1 (experiment), 2 (E2E tests), 3 (`_load_state`).
-* **Next step**: 4 (sliding‑window contribution + snubbing + seeding mode).
-* **Test count**: 185 passing. Don't ship a step that drops this.
+* **Steps complete**: 1 (experiment), 2 (E2E tests), 3 (`_load_state`),
+  4a (sliding-window contribution metric).
+* **Next step**: 4b — snubbing (detect peers that unchoke us but stop
+  sending; demote them in the unchoke decision). Then 4c (seeding mode).
+  Each sub-step ships its own commits + `revision/PROGRESS_STEP_4{a,b,c}.md`.
+* **Test count**: 193 passing. Don't ship a step that drops this.
 * **Constraint**: book deadline is *tight* (the user said "1 day" for the
   book; ~2 weeks until the oral exam). Code we add must be defensible
   by Adam in the oral exam — see `revision/PLAN.md` "Constraints".

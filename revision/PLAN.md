@@ -147,6 +147,12 @@ Keep the existing description but add:
 
 #### 4e. Tit-for-tat: real sliding window + snubbing (§7.2)
 
+> **Split into three independent sub-steps for delivery: 4a (sliding window),
+> 4b (snubbing), 4c (seeding mode). Each ships its own code, tests,
+> commits, and `revision/PROGRESS_STEP_4*.md` doc. The work-item names
+> below ("§7.2.1", "§7.2.2", "§7.2.3") map to those three sub-steps.**
+
+
 The teacher's most damaging algorithmic note: "האלגוריתם לא מקורי וגם המימוש שטחי". We address both halves:
 - **Honest framing**: state that the algorithm is Bram Cohen's 2003 design; we implement, not invent.
 - **Real depth**: replace the cumulative `bytes_downloaded` proxy with the **proper sliding-window contribution metric**, and add **snubbing**.
