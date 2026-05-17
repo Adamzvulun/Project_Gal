@@ -1,0 +1,11 @@
+algorithm,run_idx,total_time_s,completed_pieces,num_pieces,avg_speed_Bps,hash_failures,peers_connected
+rarest_first,0,0.0369,16,16,28406581.3,0,4
+rarest_first,1,0.0259,16,16,40521896.6,0,4
+rarest_first,2,0.0317,16,16,33123552.4,0,4
+rarest_first,3,0.0273,16,16,38450310.7,0,4
+rarest_first,4,0.0266,16,16,39439667.1,0,4
+random,0,0.0273,16,16,38402736.3,0,4
+random,1,0.0268,16,16,39075363.2,0,4
+random,2,0.0276,16,16,37945343.3,0,4
+random,3,0.0390,16,16,26909825.2,0,4
+random,4,0.0317,16,16,33122699.6,0,4
