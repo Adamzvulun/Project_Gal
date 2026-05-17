@@ -6,6 +6,7 @@ Handles handshake, message parsing, state machine, and message sending/receiving
 """
 
 import asyncio
+import collections
 import logging
 import struct
 import time
@@ -23,6 +24,11 @@ MAX_MESSAGE_SIZE = 2 * 1024 * 1024  # 2 MB max message size
 CONNECTION_TIMEOUT = 30  # seconds
 REQUEST_TIMEOUT = 60  # seconds
 MAX_PENDING_REQUESTS = 50
+
+# Retention window for per-peer download samples. Must be >= the longest
+# sliding window any consumer will query (currently 20s for tit-for-tat,
+# 30s for download_rate display).
+DOWNLOAD_SAMPLE_RETENTION = 30  # seconds
 
 
 class MessageType(IntEnum):
@@ -149,7 +155,10 @@ class PeerConnection:
         self.bytes_downloaded = 0
         self.bytes_uploaded = 0
         self.download_rate = 0.0  # bytes per second
-        self._download_samples = []  # (timestamp, bytes) for rate calculation
+        # (timestamp, bytes_received) samples retained for
+        # DOWNLOAD_SAMPLE_RETENTION seconds. Used both for the rate display
+        # and for tit-for-tat's sliding-window contribution metric.
+        self._download_samples: "collections.deque[tuple[float, int]]" = collections.deque()
         self._last_activity = 0
         self._pending_requests = 0
         self._last_request_time: float = 0
@@ -323,13 +332,13 @@ class PeerConnection:
             data_len = len(message.block_data) if message.block_data else 0
             self.bytes_downloaded += data_len
             self._pending_requests = max(0, self._pending_requests - 1)
-            self._last_piece_time = time.time()
             now = time.time()
+            self._last_piece_time = now
             self._download_samples.append((now, data_len))
-            # Keep only last 30 seconds of samples
-            self._download_samples = [
-                (t, b) for t, b in self._download_samples if now - t < 30
-            ]
+            # Evict samples outside the retention window.
+            cutoff = now - DOWNLOAD_SAMPLE_RETENTION
+            while self._download_samples and self._download_samples[0][0] < cutoff:
+                self._download_samples.popleft()
             if self._download_samples:
                 total_bytes = sum(b for _, b in self._download_samples)
                 duration = now - self._download_samples[0][0]
@@ -514,6 +523,26 @@ class PeerConnection:
         if self._last_activity == 0:
             return float('inf')
         return time.time() - self._last_activity
+
+    def bytes_received_in_window(self, window: float = 20.0) -> int:
+        """Bytes received from this peer within the last `window` seconds.
+
+        This is the sliding-window contribution metric used by tit-for-tat
+        unchoke decisions. Reading older samples than the retention window
+        (DOWNLOAD_SAMPLE_RETENTION) yields a truncated answer — callers
+        should not pass a window larger than retention.
+
+        Pure read: does not mutate the sample deque (eviction happens on
+        PIECE message receipt).
+        """
+        if not self._download_samples:
+            return 0
+        cutoff = time.time() - window
+        total = 0
+        for t, b in self._download_samples:
+            if t >= cutoff:
+                total += b
+        return total
 
     def __repr__(self):
         state = "connected" if self.connected else "disconnected"

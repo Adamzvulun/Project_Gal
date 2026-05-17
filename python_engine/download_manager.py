@@ -34,6 +34,9 @@ MAX_CONNECTIONS = 50
 KEEP_ALIVE_INTERVAL = 60  # seconds
 PIECE_REQUEST_TIMEOUT = 30  # seconds before resetting a stale in-progress piece
 PEER_CLEANUP_INTERVAL = 15  # seconds between dead peer cleanup passes
+# Tit-for-tat sliding-window length. Two choke cycles (CHOKE_INTERVAL=10s)
+# fit inside this window, so the metric is stable across cycles.
+TIT_FOR_TAT_WINDOW = 20  # seconds
 
 
 class DownloadState(Enum):
@@ -522,7 +525,9 @@ class Download:
         """Implement the Tit-for-Tat choke/unchoke algorithm.
 
         1. Get all interested peers
-        2. Sort by how much they uploaded to us
+        2. Sort by sliding-window contribution (bytes received in the last
+           TIT_FOR_TAT_WINDOW seconds) — a peer that contributed early and
+           then went silent does NOT keep a high score forever
         3. Unchoke top K peers
         4. Optimistic unchoke: randomly unchoke one additional peer
         5. Choke all others
@@ -535,8 +540,13 @@ class Download:
         if not interested_peers:
             return
 
-        # Sort by download rate from this peer (how much they contribute to us)
-        interested_peers.sort(key=lambda x: x[1].bytes_downloaded, reverse=True)
+        # Sort by sliding-window contribution. Cumulative bytes_downloaded
+        # would let an early contributor that has since stopped keep its
+        # unchoke slot indefinitely; the window punishes silence.
+        interested_peers.sort(
+            key=lambda x: x[1].bytes_received_in_window(TIT_FOR_TAT_WINDOW),
+            reverse=True
+        )
 
         # Select top K
         to_unchoke = set()

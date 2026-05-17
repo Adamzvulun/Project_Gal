@@ -4,6 +4,7 @@ Tests for the PeerConnection module.
 
 import asyncio
 import struct
+import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -224,3 +225,78 @@ class TestMessageHandling:
         msg = PeerMessage(MessageType.PIECE, payload)
         await conn._handle_message(msg)
         assert conn.bytes_downloaded == 1000
+
+
+class TestSlidingWindow:
+    """Sliding-window contribution metric used by tit-for-tat."""
+
+    def _make_conn(self):
+        return PeerConnection(
+            ip='10.0.0.1', port=6881,
+            info_hash=b'\x01' * 20, peer_id=b'\x02' * 20,
+            num_pieces=4
+        )
+
+    def test_empty_returns_zero(self):
+        conn = self._make_conn()
+        assert conn.bytes_received_in_window(20.0) == 0
+        assert conn.bytes_received_in_window(0.001) == 0
+
+    def test_sums_recent_samples(self):
+        conn = self._make_conn()
+        now = 1000.0
+        conn._download_samples.extend([
+            (now - 1, 100),
+            (now - 5, 200),
+            (now - 10, 300),
+        ])
+        with patch('python_engine.peer_connection.time.time', return_value=now):
+            assert conn.bytes_received_in_window(20.0) == 600
+            assert conn.bytes_received_in_window(6.0) == 300
+            assert conn.bytes_received_in_window(0.5) == 0
+
+    def test_window_excludes_old_samples(self):
+        conn = self._make_conn()
+        now = 1000.0
+        # 100 bytes at t=now-30 is outside a 20s window
+        conn._download_samples.extend([
+            (now - 30, 100),
+            (now - 25, 200),
+            (now - 19, 300),
+            (now - 1, 400),
+        ])
+        with patch('python_engine.peer_connection.time.time', return_value=now):
+            assert conn.bytes_received_in_window(20.0) == 700
+
+    def test_does_not_mutate_samples(self):
+        conn = self._make_conn()
+        now = 1000.0
+        conn._download_samples.extend([
+            (now - 30, 100),
+            (now - 1, 400),
+        ])
+        original_len = len(conn._download_samples)
+        with patch('python_engine.peer_connection.time.time', return_value=now):
+            conn.bytes_received_in_window(5.0)
+        assert len(conn._download_samples) == original_len
+
+    @pytest.mark.asyncio
+    async def test_piece_handler_appends_and_evicts(self):
+        conn = self._make_conn()
+        # Seed with an old sample that should get evicted.
+        conn._download_samples.append((time.time() - 100, 999))
+        block_data = b'\x00' * 1234
+        payload = struct.pack('!II', 0, 0) + block_data
+        msg = PeerMessage(MessageType.PIECE, payload)
+        await conn._handle_message(msg)
+        # The stale sample is gone; only the just-received one remains.
+        assert len(conn._download_samples) == 1
+        assert conn._download_samples[0][1] == 1234
+        # Sliding-window metric agrees with the cumulative bytes_downloaded.
+        assert conn.bytes_received_in_window(20.0) == 1234
+        assert conn.bytes_downloaded == 1234
+
+    def test_cumulative_bytes_downloaded_unchanged(self):
+        """Adding the sliding-window metric must not break cumulative stats."""
+        conn = self._make_conn()
+        assert conn.bytes_downloaded == 0  # public field still exists, defaults to 0
