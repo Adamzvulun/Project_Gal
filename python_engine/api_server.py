@@ -82,6 +82,9 @@ def get_manager() -> DownloadManager:
             download_dir=DOWNLOAD_DIR,
             state_dir=STATE_DIR
         )
+        restored = _manager.restore_state()
+        if restored:
+            logger.info(f"[engine] restored {restored} download(s) from {STATE_DIR}")
     return _manager
 
 

@@ -3,11 +3,16 @@ Tests for the DownloadManager module.
 """
 
 import hashlib
+import json
+import os
+from pathlib import Path
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
 from python_engine.bencode import encode
 from python_engine.torrent_metadata import TorrentMetadata
+from python_engine.piece_manager import PieceStatus
 from python_engine.download_manager import (
     Download, DownloadManager, DownloadState, DownloadStats,
     AlgorithmType
@@ -170,3 +175,221 @@ class TestDownloadState:
         assert DownloadState.COMPLETED.value == "Completed"
         assert DownloadState.CANCELLED.value == "Cancelled"
         assert DownloadState.ERROR.value == "Error"
+
+
+def _build_torrent_with_real_hashes(payload: bytes, name: str, piece_length: int):
+    """Build a TorrentMetadata whose piece hashes match `payload`."""
+    pieces = b""
+    for off in range(0, len(payload), piece_length):
+        pieces += hashlib.sha1(payload[off:off + piece_length]).digest()
+    info = {
+        b'length': len(payload),
+        b'name': name.encode('utf-8'),
+        b'piece length': piece_length,
+        b'pieces': pieces,
+    }
+    torrent_dict = {
+        b'announce': b'http://tracker.example.com/announce',
+        b'info': info,
+    }
+    return TorrentMetadata(torrent_data=encode(torrent_dict))
+
+
+class TestLoadState:
+    def test_load_state_round_trip(self, tmp_path):
+        download_dir = tmp_path / "dl"
+        state_dir = tmp_path / "state"
+        download_dir.mkdir()
+        state_dir.mkdir()
+
+        payload = b"abcd" * 64  # 256 bytes, two 128-byte pieces
+        torrent = _build_torrent_with_real_hashes(payload, "file.bin", 128)
+        (download_dir / "file.bin").write_bytes(payload)
+
+        dl = Download(
+            torrent=torrent,
+            download_dir=str(download_dir),
+            state_dir=str(state_dir),
+        )
+        # Manually mark both pieces COMPLETED with real data so _save_state
+        # has something honest to record.
+        for i, piece in enumerate(dl.piece_manager.pieces):
+            piece._data = bytearray(payload[i * 128:(i + 1) * 128])
+            assert piece.verify_hash()
+            piece.status = PieceStatus.COMPLETED
+            for blk in piece.blocks:
+                blk.received = True
+        dl.stats.bytes_downloaded = 256
+        dl.stats.bytes_uploaded = 99
+        dl.stats.start_time = 1000.0
+        dl.state = DownloadState.PAUSED
+        dl._save_state()
+
+        original_id = dl.id
+        state_file = state_dir / f"{original_id}.json"
+        assert state_file.exists()
+        assert (state_dir / f"{original_id}.torrent").exists()
+        del dl
+
+        restored = Download.from_state_file(state_file)
+        assert restored is not None
+        assert restored.id == original_id
+        assert restored.torrent.info_hash_hex() == torrent.info_hash_hex()
+        assert restored.state == DownloadState.PAUSED
+        assert restored.stats.bytes_downloaded == 256
+        assert restored.stats.bytes_uploaded == 99
+        assert restored.stats.start_time == 1000.0
+        assert restored.piece_manager.is_complete
+        for piece in restored.piece_manager.pieces:
+            assert piece.status == PieceStatus.COMPLETED
+
+    def test_load_state_completed_stays_completed(self, tmp_path):
+        download_dir = tmp_path / "dl"
+        state_dir = tmp_path / "state"
+        download_dir.mkdir()
+        state_dir.mkdir()
+        payload = b"x" * 128
+        torrent = _build_torrent_with_real_hashes(payload, "f.bin", 128)
+        (download_dir / "f.bin").write_bytes(payload)
+        dl = Download(
+            torrent=torrent,
+            download_dir=str(download_dir),
+            state_dir=str(state_dir),
+        )
+        piece = dl.piece_manager.pieces[0]
+        piece._data = bytearray(payload)
+        piece.status = PieceStatus.COMPLETED
+        for blk in piece.blocks:
+            blk.received = True
+        dl.state = DownloadState.COMPLETED
+        dl._save_state()
+        restored = Download.from_state_file(state_dir / f"{dl.id}.json")
+        assert restored is not None
+        assert restored.state == DownloadState.COMPLETED
+
+    def test_load_state_corrupt_json_returns_none(self, tmp_path):
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        bad = state_dir / "abc.json"
+        bad.write_text("{not json")
+        assert Download.from_state_file(bad) is None
+
+    def test_load_state_missing_sidecar_returns_none(self, tmp_path):
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        state_file = state_dir / "abc.json"
+        state_file.write_text(json.dumps({
+            "torrentId": "abc",
+            "info_hash": "00" * 20,
+            "download_dir": str(tmp_path),
+            "piece_status": [],
+            "state": "Paused",
+        }))
+        # No abc.torrent sidecar — should refuse, not crash.
+        assert Download.from_state_file(state_file) is None
+
+    def test_load_state_disk_bytes_mismatch_marks_missing(self, tmp_path):
+        download_dir = tmp_path / "dl"
+        state_dir = tmp_path / "state"
+        download_dir.mkdir()
+        state_dir.mkdir()
+
+        payload = b"A" * 128 + b"B" * 128  # two 128-byte pieces
+        torrent = _build_torrent_with_real_hashes(payload, "f.bin", 128)
+        (download_dir / "f.bin").write_bytes(payload)
+
+        dl = Download(
+            torrent=torrent,
+            download_dir=str(download_dir),
+            state_dir=str(state_dir),
+        )
+        for i, piece in enumerate(dl.piece_manager.pieces):
+            piece._data = bytearray(payload[i * 128:(i + 1) * 128])
+            piece.status = PieceStatus.COMPLETED
+            for blk in piece.blocks:
+                blk.received = True
+        dl._save_state()
+        state_file = state_dir / f"{dl.id}.json"
+
+        # Corrupt piece 1 on disk (overwrite the second half of the file)
+        with open(download_dir / "f.bin", "r+b") as f:
+            f.seek(128)
+            f.write(b"X" * 128)
+
+        restored = Download.from_state_file(state_file)
+        assert restored is not None
+        assert restored.piece_manager.pieces[0].status == PieceStatus.COMPLETED
+        assert restored.piece_manager.pieces[1].status == PieceStatus.MISSING
+
+    def test_load_state_info_hash_mismatch_returns_none(self, tmp_path):
+        download_dir = tmp_path / "dl"
+        state_dir = tmp_path / "state"
+        download_dir.mkdir()
+        state_dir.mkdir()
+        payload = b"q" * 128
+        torrent = _build_torrent_with_real_hashes(payload, "f.bin", 128)
+        (download_dir / "f.bin").write_bytes(payload)
+        dl = Download(
+            torrent=torrent,
+            download_dir=str(download_dir),
+            state_dir=str(state_dir),
+        )
+        dl._save_state()
+        state_file = state_dir / f"{dl.id}.json"
+        # Tamper the JSON's info_hash.
+        data = json.loads(state_file.read_text())
+        data["info_hash"] = "ff" * 20
+        state_file.write_text(json.dumps(data))
+        assert Download.from_state_file(state_file) is None
+
+
+class TestManagerRestoreState:
+    def test_restore_state_scans_directory(self, tmp_path):
+        download_dir = tmp_path / "dl"
+        state_dir = tmp_path / "state"
+        download_dir.mkdir()
+        state_dir.mkdir()
+
+        for i in range(2):
+            payload = bytes([i]) * 128
+            torrent = _build_torrent_with_real_hashes(payload, f"f{i}.bin", 128)
+            (download_dir / f"f{i}.bin").write_bytes(payload)
+            dl = Download(
+                torrent=torrent,
+                download_dir=str(download_dir),
+                state_dir=str(state_dir),
+            )
+            piece = dl.piece_manager.pieces[0]
+            piece._data = bytearray(payload)
+            piece.status = PieceStatus.COMPLETED
+            for blk in piece.blocks:
+                blk.received = True
+            dl._save_state()
+
+        mgr = DownloadManager(
+            download_dir=str(download_dir),
+            state_dir=str(state_dir),
+        )
+        assert mgr.restore_state() == 2
+        assert len(mgr.downloads) == 2
+        for d in mgr.downloads.values():
+            assert d.state == DownloadState.PAUSED
+            assert d.piece_manager.is_complete
+
+    def test_restore_state_empty_dir_returns_zero(self, tmp_path):
+        mgr = DownloadManager(
+            download_dir=str(tmp_path / "dl"),
+            state_dir=str(tmp_path / "state"),
+        )
+        assert mgr.restore_state() == 0
+        assert mgr.downloads == {}
+
+    def test_restore_state_skips_corrupt_files(self, tmp_path):
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / "bad.json").write_text("{nope")
+        mgr = DownloadManager(
+            download_dir=str(tmp_path / "dl"),
+            state_dir=str(state_dir),
+        )
+        assert mgr.restore_state() == 0

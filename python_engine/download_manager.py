@@ -15,8 +15,10 @@ import os
 import time
 import uuid
 from enum import Enum
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set
 
+from . import bencode
 from .peer_connection import PeerConnection, PeerMessage, MessageType, PeerConnectionError
 from .piece_manager import PieceManager, PieceStatus, Block
 from .tracker_client import TrackerClient, Peer, TrackerResponse, generate_peer_id
@@ -763,7 +765,11 @@ class Download:
         self._save_state()
 
     def _save_state(self):
-        """Save current download state to a JSON file."""
+        """Save current download state to a JSON file.
+
+        Also writes a sidecar `{id}.torrent` next to the JSON so the download
+        can be reconstructed without the original .torrent file being available.
+        """
         state_data = {
             "torrentId": self.id,
             "info_hash": self.torrent.info_hash_hex(),
@@ -786,12 +792,144 @@ class Download:
             "start_time": self.stats.start_time,
             "stop_time": self.stats.end_time,
             "last_saved": time.time(),
+            "download_dir": self.download_dir,
+            "piece_algorithm": self.piece_algorithm.value,
+            "peer_algorithm": self.peer_algorithm.value,
         }
 
         os.makedirs(self.state_dir, exist_ok=True)
         state_path = os.path.join(self.state_dir, f"{self.id}.json")
         with open(state_path, 'w') as f:
             json.dump(state_data, f, indent=2)
+
+        # Sidecar .torrent for restoration (re-encode the parsed metadata
+        # so the bytes are canonical and the info_hash round-trips).
+        torrent_path = os.path.join(self.state_dir, f"{self.id}.torrent")
+        try:
+            with open(torrent_path, 'wb') as f:
+                f.write(bencode.encode(self.torrent._metadata))
+        except Exception as e:
+            logger.warning(f"[{self.id}] failed to write sidecar .torrent: {e}")
+
+    @classmethod
+    def from_state_file(cls, state_file, state_dir_override: Optional[str] = None,
+                        download_dir_override: Optional[str] = None) -> Optional["Download"]:
+        """Reconstruct a paused Download from a saved JSON state file.
+
+        Reads the sidecar `{id}.torrent` next to the JSON to rebuild the
+        TorrentMetadata, then re-reads each COMPLETED piece's bytes from
+        disk and re-verifies its SHA-1 before marking the piece COMPLETED.
+        Pieces that fail re-verification (or whose bytes are unreadable)
+        fall back to MISSING.
+
+        Returns None on any unrecoverable error (missing/corrupt JSON,
+        missing sidecar, info_hash mismatch). Never raises.
+        """
+        state_path = Path(state_file)
+        try:
+            with open(state_path, 'r') as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
+            logger.warning(f"Cannot read state file {state_path}: {e}")
+            return None
+
+        torrent_path = state_path.with_suffix('.torrent')
+        if not torrent_path.exists():
+            logger.warning(f"Sidecar torrent missing for state {state_path}")
+            return None
+
+        try:
+            torrent = TorrentMetadata(torrent_path=str(torrent_path))
+        except Exception as e:
+            logger.warning(f"Cannot parse sidecar torrent {torrent_path}: {e}")
+            return None
+
+        expected_hash = data.get("info_hash")
+        if expected_hash and expected_hash != torrent.info_hash_hex():
+            logger.warning(
+                f"info_hash mismatch in {state_path}: "
+                f"saved={expected_hash} sidecar={torrent.info_hash_hex()}"
+            )
+            return None
+
+        download_dir = download_dir_override or data.get("download_dir")
+        state_dir = state_dir_override or str(state_path.parent)
+        if not download_dir:
+            logger.warning(f"No download_dir in {state_path} and no override given")
+            return None
+
+        try:
+            piece_algo = AlgorithmType(data.get("piece_algorithm", "rarest_first"))
+        except ValueError:
+            piece_algo = AlgorithmType.RAREST_FIRST
+        try:
+            peer_algo = AlgorithmType(data.get("peer_algorithm", "tit_for_tat"))
+        except ValueError:
+            peer_algo = AlgorithmType.TIT_FOR_TAT
+
+        dl = cls(
+            torrent=torrent,
+            download_dir=download_dir,
+            state_dir=state_dir,
+            piece_algorithm=piece_algo,
+            peer_algorithm=peer_algo,
+        )
+
+        # Preserve the original id (don't generate a new one) so the JSON
+        # file keeps the same name on the next _save_state.
+        saved_id = data.get("torrentId")
+        if saved_id:
+            dl.id = saved_id
+
+        # Restore stats
+        dl.stats.bytes_downloaded = data.get("downloaded", 0)
+        dl.stats.bytes_uploaded = data.get("uploaded", 0)
+        dl.stats.start_time = data.get("start_time")
+        dl.stats.end_time = data.get("stop_time")
+
+        # Walk the piece_status array; re-verify each COMPLETED piece from disk.
+        statuses = data.get("piece_status", [])
+        for idx, status in enumerate(statuses):
+            if status != PieceStatus.COMPLETED.value:
+                continue
+            if idx >= len(dl.piece_manager.pieces):
+                continue
+            piece = dl.piece_manager.pieces[idx]
+            try:
+                buf = bytearray()
+                for file_path, offset_in_file, length in torrent.get_file_offset(idx):
+                    full_path = os.path.join(download_dir, file_path)
+                    with open(full_path, 'rb') as fh:
+                        fh.seek(offset_in_file)
+                        buf.extend(fh.read(length))
+                if len(buf) != piece.length:
+                    raise ValueError(
+                        f"piece {idx} short read: got {len(buf)} expected {piece.length}"
+                    )
+                piece._data = buf
+                if piece.verify_hash():
+                    piece.status = PieceStatus.COMPLETED
+                    for blk in piece.blocks:
+                        blk.received = True
+                else:
+                    logger.warning(
+                        f"[{dl.id}] piece {idx} bytes on disk failed re-verify; marking MISSING"
+                    )
+                    piece.reset()
+            except (FileNotFoundError, OSError, ValueError) as e:
+                logger.warning(
+                    f"[{dl.id}] cannot restore piece {idx} from disk: {e}; marking MISSING"
+                )
+                piece.reset()
+
+        # State policy: force PAUSED unless the saved state was COMPLETED.
+        saved_state = data.get("state")
+        if saved_state == DownloadState.COMPLETED.value:
+            dl.state = DownloadState.COMPLETED
+        else:
+            dl.state = DownloadState.PAUSED
+
+        return dl
 
     def get_status(self) -> dict:
         """Get current download status as a dictionary."""
@@ -889,3 +1027,31 @@ class DownloadManager:
     def get_download(self, download_id: str) -> Optional[Download]:
         """Get a download by ID."""
         return self.downloads.get(download_id)
+
+    def restore_state(self) -> int:
+        """Scan state_dir for `*.json` and reconstruct paused Downloads.
+
+        Each restored download lands in `self.downloads` in PAUSED state
+        (or COMPLETED if it finished before the crash). The user explicitly
+        resumes via the API; we do not auto-start the network loop.
+
+        Returns the number of downloads successfully restored.
+        """
+        state_path = Path(self.state_dir)
+        if not state_path.exists():
+            return 0
+        restored = 0
+        for state_file in sorted(state_path.glob("*.json")):
+            dl = Download.from_state_file(
+                state_file,
+                state_dir_override=self.state_dir,
+                download_dir_override=self.download_dir,
+            )
+            if dl is None:
+                continue
+            if dl.id in self.downloads:
+                logger.warning(f"Duplicate download id {dl.id} during restore; skipping")
+                continue
+            self.downloads[dl.id] = dl
+            restored += 1
+        return restored
