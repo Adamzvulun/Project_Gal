@@ -5,35 +5,33 @@ this file first, then the four files in the "read next" list.
 
 ## TL;DR
 
-* **Branch**: `claude/book-revision-v1` (do not switch unless explicitly told).
-* **Steps complete**: 1 (experiment) and 2 (E2E tests).
-* **Next step**: 3 (`_load_state` — fix the broken resume claim).
-* **Test count**: 176 passing. Don't ship a step that drops this.
+* **Branch**: `book-revision-v2` (renamed from `claude/book-revision-v2-SxMpj`).
+  Do not switch unless explicitly told.
+* **Steps complete**: 1 (experiment), 2 (E2E tests), 3 (`_load_state`).
+* **Next step**: 4 (sliding‑window contribution + snubbing + seeding mode).
+* **Test count**: 185 passing. Don't ship a step that drops this.
 * **Constraint**: book deadline is *tight* (the user said "1 day" for the
   book; ~2 weeks until the oral exam). Code we add must be defensible
   by Adam in the oral exam — see `revision/PLAN.md` "Constraints".
-* **Last 3 commits on this branch**:
-  ```
-  ac5a279 revision: document steps 1 and 2 (experiment + E2E tests)
-  79ea365 tests: add end-to-end peer wire protocol integration tests
-  690454e experiments: actually run the rarest-first vs random comparison
-  ```
+* **Most recent commits**: see `git log --oneline -5` (the step‑3
+  commits land on top of `1a4602a`).
 
 ## Read next, in this order
 
 1. `revision/ASSESSMENT_SUMMARY.md` — what the teacher actually
    complained about (1‑page distillation of the 18‑page PDF).
-2. `revision/PLAN.md` — the full agreed plan. Steps 3‑6 are still
+2. `revision/PLAN.md` — the full agreed plan. Steps 4‑6 are still
    open. The "Constraints" and "What we explicitly do NOT do" lists
    are load‑bearing — don't go beyond them without asking the user.
 3. `revision/CODE_AUDIT.md` — file:line truth of what is actually
    implemented, so you don't waste time re‑reading code we already
    audited.
-4. `revision/PROGRESS_STEP_1_AND_2.md` — what we just shipped, with
-   the design decisions and oral‑exam answers. Useful both as
-   context and as the model for documenting steps 3+.
+4. `revision/PROGRESS_STEP_1_AND_2.md` and
+   `revision/PROGRESS_STEP_3.md` — what's already shipped, with the
+   design decisions and oral‑exam answers. Use them both as context
+   and as the model for documenting future steps.
 
-Once read, the user can ask you to start step 3 and you'll have
+Once read, the user can ask you to start step 4 and you'll have
 everything.
 
 ## What's on disk now (added during this revision)
