@@ -19,14 +19,16 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import edit_24  # noqa: E402
 import edit_25_26  # noqa: E402
-import edit_72  # noqa: E402
-import edit_62  # noqa: E402
-import edit_52  # noqa: E402
-import edit_71  # noqa: E402
 import edit_113  # noqa: E402
-import edit_tone  # noqa: E402
 import edit_255  # noqa: E402
 import edit_trim  # noqa: E402
+import edit_book_116  # noqa: E402
+import edit_book_154  # noqa: E402
+# NOTE: edit_tone, edit_52, edit_62, edit_71, edit_72 are deliberately NOT
+# imported here. They targeted proposal-area indices (idx < 305) which the
+# user has declared off-limits. Their content was moved into edit_book_116
+# (handshake/framing/bencode → book §11.6) and edit_book_154 (rarest-first
+# depth + tit-for-tat trio → book §15.4).
 from docx_patcher import patch_docx, verify_non_document_identical, W  # noqa: E402
 
 DOCX = Path("revision/book-v2/ספר פרוייקט אדם זבולון.docx")
@@ -35,21 +37,50 @@ BACKUP = Path("revision/book-v2/_tools/before_all.docx")
 
 
 PASSES = [
-    ("§3.3/§7.1/§7.2 attribution sentences", edit_tone.apply),
-    ("§5.2.1 bencode + info_hash worked example", edit_52.apply),
-    ("§6.2.1 handshake bytes + §6.2.2 framing", edit_62.apply),
-    ("§7.1 rarest-first depth + thundering-herd pain", edit_71.apply),
-    ("§7.2 tit-for-tat — sliding window / snubbing / seeding", edit_72.apply),
-    ("§11.3 asyncio+Flask hazard disclosure", edit_113.apply),
-    ("§24 empirical + E2E", edit_24.apply),
-    ("§25/§26 auto-resume update", edit_25_26.apply),
-    ("§25.5 honest limitations", edit_255.apply),
-    ("§4h trim inflated claims", edit_trim.apply),
+    ("book §11.3 asyncio+Flask hazard disclosure", edit_113.apply),
+    ("book §11.6 handshake / framing / bencode", edit_book_116.apply),
+    ("book §15.4 rarest-first depth + tit-for-tat trio", edit_book_154.apply),
+    ("book §24 empirical + E2E", edit_24.apply),
+    ("book §25/§26 auto-resume update", edit_25_26.apply),
+    ("book §25.5 honest limitations", edit_255.apply),
+    ("book §4h trim inflated claims", edit_trim.apply),
 ]
+
+
+PROPOSAL_CUTOFF_IDX = 305  # body indices < 305 are the project proposal
+                            # (pages 1–23). Off-limits per user instruction.
+
+
+def _assert_no_proposal_writes(passes_named) -> None:
+    """Inspect each pass module for ORIGINAL-source body indices it edits.
+    Fail loudly if any pass declares an index inside the proposal range.
+    """
+    import importlib
+    for name, apply_fn in passes_named:
+        mod = importlib.import_module(apply_fn.__module__)
+        candidates: list[int] = []
+        for attr in ("REPLACEMENTS", "INSERT_PARA_AFTER", "INSERT_AFTER",
+                     "INSERT_AFTER_IDX", "REMOVE_INDICES", "INSERT_TABLE_AFTER"):
+            v = getattr(mod, attr, None)
+            if v is None:
+                continue
+            if isinstance(v, dict):
+                candidates.extend(v.keys())
+            elif isinstance(v, (list, tuple)):
+                candidates.extend(v)
+            elif isinstance(v, int):
+                candidates.append(v)
+        bad = [i for i in candidates if i < PROPOSAL_CUTOFF_IDX]
+        if bad:
+            raise RuntimeError(
+                f"pass {apply_fn.__module__!r} ({name}) targets proposal "
+                f"indices (off-limits): {sorted(set(bad))}"
+            )
 
 
 def edit(root, body, W):  # noqa: ARG001
     """Combined edit: snapshot once, run every pass against that snapshot."""
+    _assert_no_proposal_writes(PASSES)
     snapshot = list(body)
     for name, apply_fn in PASSES:
         print(f"  · applying {name}")
