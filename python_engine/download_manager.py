@@ -45,6 +45,12 @@ class DownloadState(Enum):
     RUNNING = "Running"
     PAUSED = "Paused"
     COMPLETED = "Completed"
+    # Post-completion live state: download is done but we keep serving
+    # peers. Distinct from COMPLETED (terminal) so the choke loop can
+    # keep running and the seed-mode branch of _tit_for_tat_unchoke
+    # activates. _load_state restores complete-on-disk downloads as
+    # COMPLETED; user action (start) promotes them to SEEDING.
+    SEEDING = "Seeding"
     CANCELLED = "Cancelled"
     ERROR = "Error"
 
@@ -513,11 +519,29 @@ class Download:
                 break
         return sent
 
+    def _is_seeding(self) -> bool:
+        """True iff the download is complete and we are serving the swarm.
+
+        Triggers the seed-mode branch of _tit_for_tat_unchoke, which ranks
+        peers by how fast we are uploading to them (bytes_sent_in_window)
+        instead of receiving from them — the leech metric is permanently
+        zero post-completion.
+        """
+        return (
+            self.piece_manager.is_complete
+            and self.state in (DownloadState.COMPLETED, DownloadState.SEEDING)
+        )
+
     async def _choke_loop(self):
-        """Periodically run choke/unchoke algorithm."""
-        while self.state == DownloadState.RUNNING:
+        """Periodically run choke/unchoke algorithm.
+
+        Runs while we're actively downloading (RUNNING) OR seeding
+        (post-completion). In seed mode the algorithm switches metric
+        but the cadence stays at CHOKE_INTERVAL.
+        """
+        while self.state == DownloadState.RUNNING or self._is_seeding():
             await asyncio.sleep(CHOKE_INTERVAL)
-            if self.state != DownloadState.RUNNING:
+            if self.state != DownloadState.RUNNING and not self._is_seeding():
                 break
 
             if self.peer_algorithm == AlgorithmType.TIT_FOR_TAT:
@@ -549,6 +573,17 @@ class Download:
         ]
 
         if not interested_peers:
+            return
+
+        # Seed mode: leech metric (bytes_received_in_window) is permanently
+        # zero post-completion, so all peers would tie and the top-K is
+        # effectively random. Instead rank by how fast we are uploading
+        # to them — prioritize peers that drain our upload bandwidth best
+        # so the swarm benefits most from what we serve. Snubbing is not
+        # meaningful here: a peer not sending us blocks is the *normal*
+        # case (we don't need any).
+        if self._is_seeding():
+            await self._seed_mode_unchoke(interested_peers)
             return
 
         # Partition: snubbed peers shouldn't compete on contribution metric
@@ -601,6 +636,47 @@ class Download:
             to_unchoke.add(opt_key)
 
         # Apply choke/unchoke decisions
+        for key, conn in self._connections.items():
+            if not conn.connected:
+                continue
+            if key in to_unchoke and conn.am_choking:
+                await conn.send_unchoke()
+                self.stats.unchoke_count += 1
+            elif key not in to_unchoke and not conn.am_choking:
+                await conn.send_choke()
+                self.stats.choke_count += 1
+
+    async def _seed_mode_unchoke(self, interested_peers):
+        """Seeding-mode tit-for-tat: sort by upload window, not download.
+
+        Standard BitTorrent seeding policy (Cohen 2003; libtorrent;
+        mainline): once we've finished downloading, the right question
+        flips from "who gives me the most?" to "who can I give to the
+        fastest?". Prioritize peers with good downstream bandwidth so
+        our upload contributes most to the swarm.
+        """
+        # Sort by bytes_sent_in_window descending — top peers are the
+        # ones currently draining our upload fastest.
+        interested_peers.sort(
+            key=lambda x: x[1].bytes_sent_in_window(TIT_FOR_TAT_WINDOW),
+            reverse=True
+        )
+
+        to_unchoke: Set[str] = set()
+        for key, _ in interested_peers[:MAX_UNCHOKED_PEERS]:
+            to_unchoke.add(key)
+
+        # Optimistic unchoke: random peer outside top-K. Useful in seed
+        # mode too — it discovers new peers whose upload-window metric is
+        # currently zero just because we haven't started serving them yet.
+        remaining = [
+            (key, conn) for key, conn in interested_peers if key not in to_unchoke
+        ]
+        if remaining:
+            import random
+            opt_key, _ = random.choice(remaining)
+            to_unchoke.add(opt_key)
+
         for key, conn in self._connections.items():
             if not conn.connected:
                 continue

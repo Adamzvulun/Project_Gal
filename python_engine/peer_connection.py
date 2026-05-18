@@ -30,6 +30,10 @@ MAX_PENDING_REQUESTS = 50
 # 30s for download_rate display).
 DOWNLOAD_SAMPLE_RETENTION = 30  # seconds
 
+# Symmetric retention for per-peer upload samples. Used by seeding-mode
+# tit-for-tat which sorts by bytes_sent_in_window instead of received.
+UPLOAD_SAMPLE_RETENTION = 30  # seconds
+
 # A peer that has unchoked us but sent no PIECE for this long is "snubbed":
 # the unchoke loop demotes them so they don't permanently hold a slot.
 # Matches mainline BitTorrent / libtorrent (Cohen 2003 §3).
@@ -164,6 +168,9 @@ class PeerConnection:
         # DOWNLOAD_SAMPLE_RETENTION seconds. Used both for the rate display
         # and for tit-for-tat's sliding-window contribution metric.
         self._download_samples: "collections.deque[tuple[float, int]]" = collections.deque()
+        # Symmetric (timestamp, bytes_sent) samples used by seeding-mode
+        # tit-for-tat to rank peers by how fast we are uploading to them.
+        self._upload_samples: "collections.deque[tuple[float, int]]" = collections.deque()
         self._last_activity = 0
         self._pending_requests = 0
         self._last_request_time: float = 0
@@ -468,7 +475,15 @@ class PeerConnection:
         """
         payload = struct.pack('!II', piece_index, begin) + data
         await self.send_message(MessageType.PIECE, payload)
-        self.bytes_uploaded += len(data)
+        data_len = len(data)
+        self.bytes_uploaded += data_len
+        # Mirror of the download path: append a sample and evict stale
+        # entries left-to-right so the deque stays bounded.
+        now = time.time()
+        self._upload_samples.append((now, data_len))
+        cutoff = now - UPLOAD_SAMPLE_RETENTION
+        while self._upload_samples and self._upload_samples[0][0] < cutoff:
+            self._upload_samples.popleft()
 
     async def send_cancel(self, piece_index: int, begin: int, length: int):
         """Send CANCEL message for a previously requested block."""
@@ -550,6 +565,26 @@ class PeerConnection:
         cutoff = time.time() - window
         total = 0
         for t, b in self._download_samples:
+            if t >= cutoff:
+                total += b
+        return total
+
+    def bytes_sent_in_window(self, window: float = 20.0) -> int:
+        """Bytes uploaded to this peer within the last `window` seconds.
+
+        Seeding-mode tit-for-tat sorts by this metric: when we're a pure
+        seeder we have nothing to receive, so the leech sort key
+        (bytes_received_in_window) is permanently zero. Picking peers
+        that are draining our upload fastest helps the swarm most.
+
+        Pure read; does not mutate the deque (eviction happens on
+        send_piece). Caller must not pass a window > UPLOAD_SAMPLE_RETENTION.
+        """
+        if not self._upload_samples:
+            return 0
+        cutoff = time.time() - window
+        total = 0
+        for t, b in self._upload_samples:
             if t >= cutoff:
                 total += b
         return total
