@@ -24,6 +24,7 @@ import edit_255  # noqa: E402
 import edit_trim  # noqa: E402
 import edit_book_116  # noqa: E402
 import edit_book_154  # noqa: E402
+import edit_book_attribution  # noqa: E402
 # NOTE: edit_tone, edit_52, edit_62, edit_71, edit_72 are deliberately NOT
 # imported here. They targeted proposal-area indices (idx < 305) which the
 # user has declared off-limits. Their content was moved into edit_book_116
@@ -37,6 +38,7 @@ BACKUP = Path("revision/book-v2/_tools/before_all.docx")
 
 
 PASSES = [
+    ("book §6.2 attribution framing", edit_book_attribution.apply),
     ("book §11.3 asyncio+Flask hazard disclosure", edit_113.apply),
     ("book §11.6 handshake / framing / bencode", edit_book_116.apply),
     ("book §15.4 rarest-first depth + tit-for-tat trio", edit_book_154.apply),
