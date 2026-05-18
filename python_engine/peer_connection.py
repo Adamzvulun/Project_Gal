@@ -30,6 +30,11 @@ MAX_PENDING_REQUESTS = 50
 # 30s for download_rate display).
 DOWNLOAD_SAMPLE_RETENTION = 30  # seconds
 
+# A peer that has unchoked us but sent no PIECE for this long is "snubbed":
+# the unchoke loop demotes them so they don't permanently hold a slot.
+# Matches mainline BitTorrent / libtorrent (Cohen 2003 §3).
+SNUB_THRESHOLD = 60.0  # seconds
+
 
 class MessageType(IntEnum):
     """Peer Wire Protocol message types."""
@@ -163,6 +168,10 @@ class PeerConnection:
         self._pending_requests = 0
         self._last_request_time: float = 0
         self._last_piece_time: float = 0  # last time we received a PIECE response
+        # Timestamp the handshake completed. Used as the fallback "last signal"
+        # for snubbing detection so a freshly-unchoked peer gets the full
+        # threshold to deliver its first block before being marked snubbed.
+        self._connect_time: float = 0
 
     @property
     def connected(self) -> bool:
@@ -185,6 +194,7 @@ class PeerConnection:
         await self._send_handshake()
         await self._receive_handshake()
         self._handshake_complete = True
+        self._connect_time = time.time()
         logger.info(f"Handshake complete with {self.ip}:{self.port}")
 
     async def _send_handshake(self):
@@ -543,6 +553,32 @@ class PeerConnection:
             if t >= cutoff:
                 total += b
         return total
+
+    def is_snubbed(self, threshold: float = SNUB_THRESHOLD) -> bool:
+        """True iff this peer has unchoked us but stopped delivering blocks.
+
+        A peer is snubbed when all of the following hold:
+            * `peer_choking is False` — they advertised willingness to send,
+              so silence is on them, not us.
+            * `_last_request_time > 0` — we have actually asked them for at
+              least one block. A peer we never queried can't be snubbing us.
+            * `now - last_signal > threshold` — where `last_signal` is the
+              most recent of: last PIECE received, or handshake completion.
+              The connect-time fallback gives a freshly-unchoked peer the
+              full threshold to deliver its first block.
+
+        If `peer_choking is True` we can't tell whether silence is snubbing
+        or normal choking, so we return False — the choke decision will
+        rotate them out naturally.
+        """
+        if self.peer_choking:
+            return False
+        if self._last_request_time <= 0:
+            return False
+        last_signal = max(self._last_piece_time, self._connect_time)
+        if last_signal <= 0:
+            return False
+        return (time.time() - last_signal) > threshold
 
     def __repr__(self):
         state = "connected" if self.connected else "disconnected"

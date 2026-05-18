@@ -300,3 +300,81 @@ class TestSlidingWindow:
         """Adding the sliding-window metric must not break cumulative stats."""
         conn = self._make_conn()
         assert conn.bytes_downloaded == 0  # public field still exists, defaults to 0
+
+
+class TestSnubbing:
+    """is_snubbed: detect peers that unchoke us then stop sending blocks."""
+
+    def _make_conn(self):
+        return PeerConnection(
+            ip='10.0.0.1', port=6881,
+            info_hash=b'\x01' * 20, peer_id=b'\x02' * 20,
+            num_pieces=4
+        )
+
+    def test_not_snubbed_when_peer_choking_us(self):
+        # A choking peer can't be snubbing us by definition — they've
+        # advertised "don't send me requests, I won't send you blocks".
+        conn = self._make_conn()
+        conn.peer_choking = True
+        conn._last_request_time = 100.0
+        conn._last_piece_time = 100.0
+        conn._connect_time = 100.0
+        with patch('python_engine.peer_connection.time.time', return_value=1_000.0):
+            assert conn.is_snubbed() is False
+
+    def test_not_snubbed_when_no_requests_sent(self):
+        # We've never asked this peer for anything. Their silence is normal.
+        conn = self._make_conn()
+        conn.peer_choking = False
+        conn._last_request_time = 0
+        conn._connect_time = 100.0
+        with patch('python_engine.peer_connection.time.time', return_value=1_000.0):
+            assert conn.is_snubbed() is False
+
+    def test_snubbed_after_threshold_silence(self):
+        # Unchoking us + we asked + no piece in >60s ⇒ snubbed.
+        conn = self._make_conn()
+        conn.peer_choking = False
+        conn._last_request_time = 100.0
+        conn._last_piece_time = 100.0  # 900s ago
+        conn._connect_time = 100.0
+        with patch('python_engine.peer_connection.time.time', return_value=1_000.0):
+            assert conn.is_snubbed() is True
+
+    def test_recent_piece_clears_snub(self):
+        # A piece arrived 5 seconds ago — peer is feeding us, not snubbing.
+        conn = self._make_conn()
+        conn.peer_choking = False
+        conn._last_request_time = 900.0
+        conn._last_piece_time = 995.0
+        conn._connect_time = 100.0
+        with patch('python_engine.peer_connection.time.time', return_value=1_000.0):
+            assert conn.is_snubbed() is False
+
+    def test_threshold_is_configurable(self):
+        # Boundary check: with threshold=10, 11s silence ⇒ snubbed,
+        # 9s silence ⇒ not snubbed.
+        conn = self._make_conn()
+        conn.peer_choking = False
+        conn._last_request_time = 100.0
+        conn._connect_time = 100.0
+        with patch('python_engine.peer_connection.time.time', return_value=1_000.0):
+            conn._last_piece_time = 989.0  # 11s ago
+            assert conn.is_snubbed(threshold=10.0) is True
+            conn._last_piece_time = 991.0  # 9s ago
+            assert conn.is_snubbed(threshold=10.0) is False
+
+    def test_connect_time_fallback_protects_fresh_peer(self):
+        # A peer who just connected and hasn't sent a piece yet should not be
+        # snubbed until the threshold has elapsed since handshake.
+        conn = self._make_conn()
+        conn.peer_choking = False
+        conn._last_request_time = 990.0
+        conn._last_piece_time = 0  # never received a piece yet
+        conn._connect_time = 990.0  # connected 10s ago
+        with patch('python_engine.peer_connection.time.time', return_value=1_000.0):
+            assert conn.is_snubbed(threshold=60.0) is False
+            # But after the threshold, the same peer becomes snubbed.
+        with patch('python_engine.peer_connection.time.time', return_value=1_100.0):
+            assert conn.is_snubbed(threshold=60.0) is True
