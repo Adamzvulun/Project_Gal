@@ -27,8 +27,10 @@ from lxml import etree  # noqa: E402
 
 from docx_patcher import patch_docx, verify_non_document_identical, W  # noqa: E402
 from runs_builder import build_paragraph, replace_paragraph_text  # noqa: E402
+from table_builder import build_table  # noqa: E402
 
 DOCX = Path("revision/book-v2/ספר פרוייקט אדם זבולון.docx")
+SOURCE = Path("docs/ספר פרוייקט אדם זבולון.docx")
 BACKUP = Path("revision/book-v2/_tools/before_24.docx")
 
 
@@ -81,14 +83,35 @@ PARA_1325 = (
 )
 
 PARA_1326 = (
-    "חמש הרצות עצמאיות לכל אלגוריתם, סך הכל 10 הרצות. הסיגנל הברור "
-    "ביותר הוא כמות ה-bytes שכל peer העלה ל-Engine: תחת rarest-first, "
-    "`full` מספק בדיוק **512.0 KB** (8 × 64 KB, החצי הנדיר), בעוד תחת "
-    "random הוא מספק **576.0 KB** — כ-12.5% יותר. ההפרש מפוצה "
-    "בעבודה מופחתת של `low_a`, `low_b`, `low_c`, אבל הסיגנל הברור הוא "
-    "ב-`full`: rarest-first מצליח להגביל אותו לחצי הנדיר ולא מבזבז "
-    "אותו על חתיכות שכיחות שאחרים יכולים לספק."
+    "חמש הרצות עצמאיות לכל אלגוריתם, סך הכל 10 הרצות. הטבלה הבאה "
+    "היא הסיגנל הברור ביותר — כמה bytes כל peer העלה ל-Engine בכל "
+    "אלגוריתם (ממוצע 5 הרצות):"
 )
+
+# Headline table inserted immediately after paragraph 1326.
+# Columns (visual order under bidiVisual=1 — first cell renders on the
+# right): Peer, rarest-first, random, פרשנות.
+TABLE_ROWS = [
+    ["Peer", "rarest-first", "random", "פרשנות"],
+    [
+        "`full`",
+        "**512.0 KB**",
+        "**576.0 KB**",
+        "תחת rarest-first, `full` מספק בדיוק את החצי הנדיר "
+        "(8 × 64 KB). תחת random הוא מספק גם כמה חתיכות \"שכיחות\" "
+        "מיותרות.",
+    ],
+    ["`low_a`", "153.6 KB", "128.0 KB", "חולק את עומס החצי השכיח."],
+    ["`low_b`", "166.4 KB", "153.6 KB", "חולק את עומס החצי השכיח."],
+    ["`low_c`", "192.0 KB", "166.4 KB", "חולק את עומס החצי השכיח."],
+    [
+        "**סה\"כ**",
+        "1024 KB",
+        "1024 KB",
+        "זהה — כל ה-payload הורד מקצה לקצה בשתי התצורות.",
+    ],
+]
+TABLE_COL_WIDTHS = [1320, 1760, 1760, 3080]  # twentieths of a point; sums to 7920
 
 PARA_1327 = (
     "ההפרש של 12.5% הוא לא דרמטי, ואין הפרש מובהק ב-wall-clock time: "
@@ -136,14 +159,16 @@ REPLACEMENTS_BY_IDX = {
     1329: PARA_1329,
     1330: PARA_1330,
 }
-INSERT_AFTER_IDX = {1322: PARA_E2E}
+INSERT_PARA_AFTER_IDX = {1322: PARA_E2E}
+INSERT_TABLE_AFTER_IDX = 1326
 
 
 def edit(root, body, W):  # noqa: ARG001
     children = list(body)
     # Capture element references by ORIGINAL index before any mutation.
     targets = {idx: children[idx] for idx in REPLACEMENTS_BY_IDX}
-    inserts = {idx: children[idx] for idx in INSERT_AFTER_IDX}
+    para_inserts = {idx: children[idx] for idx in INSERT_PARA_AFTER_IDX}
+    table_anchor = children[INSERT_TABLE_AFTER_IDX]
 
     # Phase 1: text replacements (in-place; does not shift indices).
     for idx, prose in REPLACEMENTS_BY_IDX.items():
@@ -153,18 +178,24 @@ def edit(root, body, W):  # noqa: ARG001
         replace_paragraph_text(p, prose)
 
     # Phase 2: insert new paragraphs after specific elements.
-    for idx, prose in INSERT_AFTER_IDX.items():
-        anchor = inserts[idx]
+    for idx, prose in INSERT_PARA_AFTER_IDX.items():
+        anchor = para_inserts[idx]
         new_p = build_paragraph(prose)
         anchor.addnext(new_p)
 
+    # Phase 3: insert the headline table after paragraph 1326 (lead-in).
+    tbl = build_table(TABLE_ROWS, TABLE_COL_WIDTHS, header=True)
+    table_anchor.addnext(tbl)
+
 
 def main() -> int:
-    if not DOCX.exists():
-        print(f"missing: {DOCX}", file=sys.stderr)
+    if not SOURCE.exists():
+        print(f"missing source: {SOURCE}", file=sys.stderr)
         return 1
-    # Snapshot pre-edit state for the verifier.
-    shutil.copy2(DOCX, BACKUP)
+    # Idempotent: always start from the pristine source so the body
+    # indices in REPLACEMENTS_BY_IDX line up.
+    shutil.copy2(SOURCE, DOCX)
+    shutil.copy2(SOURCE, BACKUP)
     patch_docx(BACKUP, DOCX, edit)
     ok, diffs = verify_non_document_identical(BACKUP, DOCX)
     if not ok:
@@ -172,7 +203,7 @@ def main() -> int:
         for d in diffs:
             print(" -", d)
         # Restore.
-        shutil.copy2(BACKUP, DOCX)
+        shutil.copy2(SOURCE, DOCX)
         return 1
     print("OK: §24 edits applied; non-document.xml parts byte-identical.")
     return 0
