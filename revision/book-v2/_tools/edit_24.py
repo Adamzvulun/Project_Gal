@@ -1,37 +1,16 @@
-"""Apply the §24 (בדיקות והערכה) rewrite to the working docx.
+"""§24 (בדיקות והערכה) edit pass.
 
-Operates on body-child indices captured from the source:
-  1316  -> replace text       (counts: 160 -> 212)
-  1322  -> replace text       (drop the E2E-gap admission)
-  after 1322 -> insert new <w:p>  (E2E test description)
-  1324  -> replace text       (methodology)
-  1325  -> replace text       (setup)
-  1326  -> replace text       (results - prose, no table for now)
-  1327  -> replace text       (wall-clock interpretation)
-  1328  -> replace text       (what the experiment proves)
-  1329  -> replace text       (honest limits)
-  1330  -> replace text       (reproducibility)
-
-Run from repo root: `python3 revision/book-v2/_tools/edit_24.py`.
+Idempotent against a pristine source. Body-child indices below are
+from the ORIGINAL `docs/ספר פרוייקט אדם זבולון.docx` body. Element
+references are captured from the caller's snapshot, so insertions in
+other passes do not invalidate them.
 """
 from __future__ import annotations
 
-import shutil
-import sys
-from pathlib import Path
+from lxml import etree
 
-# Ensure local modules import.
-sys.path.insert(0, str(Path(__file__).parent))
-
-from lxml import etree  # noqa: E402
-
-from docx_patcher import patch_docx, verify_non_document_identical, W  # noqa: E402
-from runs_builder import build_paragraph, replace_paragraph_text  # noqa: E402
-from table_builder import build_table  # noqa: E402
-
-DOCX = Path("revision/book-v2/ספר פרוייקט אדם זבולון.docx")
-SOURCE = Path("docs/ספר פרוייקט אדם זבולון.docx")
-BACKUP = Path("revision/book-v2/_tools/before_24.docx")
+from runs_builder import build_paragraph, replace_paragraph_text
+from table_builder import build_table
 
 
 # --- prose ------------------------------------------------------------------
@@ -88,31 +67,6 @@ PARA_1326 = (
     "אלגוריתם (ממוצע 5 הרצות):"
 )
 
-# Headline table inserted immediately after paragraph 1326.
-# Columns (visual order under bidiVisual=1 — first cell renders on the
-# right): Peer, rarest-first, random, פרשנות.
-TABLE_ROWS = [
-    ["Peer", "rarest-first", "random", "פרשנות"],
-    [
-        "`full`",
-        "**512.0 KB**",
-        "**576.0 KB**",
-        "תחת rarest-first, `full` מספק בדיוק את החצי הנדיר "
-        "(8 × 64 KB). תחת random הוא מספק גם כמה חתיכות \"שכיחות\" "
-        "מיותרות.",
-    ],
-    ["`low_a`", "153.6 KB", "128.0 KB", "חולק את עומס החצי השכיח."],
-    ["`low_b`", "166.4 KB", "153.6 KB", "חולק את עומס החצי השכיח."],
-    ["`low_c`", "192.0 KB", "166.4 KB", "חולק את עומס החצי השכיח."],
-    [
-        "**סה\"כ**",
-        "1024 KB",
-        "1024 KB",
-        "זהה — כל ה-payload הורד מקצה לקצה בשתי התצורות.",
-    ],
-]
-TABLE_COL_WIDTHS = [1320, 1760, 1760, 3080]  # twentieths of a point; sums to 7920
-
 PARA_1327 = (
     "ההפרש של 12.5% הוא לא דרמטי, ואין הפרש מובהק ב-wall-clock time: "
     "שתי התצורות מסיימות ב-כ-30 מילי-שניות, כי על loopback צוואר "
@@ -148,7 +102,7 @@ PARA_1330 = (
 )
 
 
-REPLACEMENTS_BY_IDX = {
+REPLACEMENTS = {
     1316: PARA_1316,
     1322: PARA_1322,
     1324: PARA_1324,
@@ -159,55 +113,49 @@ REPLACEMENTS_BY_IDX = {
     1329: PARA_1329,
     1330: PARA_1330,
 }
-INSERT_PARA_AFTER_IDX = {1322: PARA_E2E}
-INSERT_TABLE_AFTER_IDX = 1326
+INSERT_PARA_AFTER = {1322: PARA_E2E}
+INSERT_TABLE_AFTER = 1326  # the lead-in paragraph
+
+TABLE_ROWS = [
+    ["Peer", "rarest-first", "random", "פרשנות"],
+    [
+        "`full`",
+        "**512.0 KB**",
+        "**576.0 KB**",
+        "תחת rarest-first, `full` מספק בדיוק את החצי הנדיר "
+        "(8 × 64 KB). תחת random הוא מספק גם כמה חתיכות \"שכיחות\" "
+        "מיותרות.",
+    ],
+    ["`low_a`", "153.6 KB", "128.0 KB", "חולק את עומס החצי השכיח."],
+    ["`low_b`", "166.4 KB", "153.6 KB", "חולק את עומס החצי השכיח."],
+    ["`low_c`", "192.0 KB", "166.4 KB", "חולק את עומס החצי השכיח."],
+    [
+        "**סה\"כ**",
+        "1024 KB",
+        "1024 KB",
+        "זהה — כל ה-payload הורד מקצה לקצה בשתי התצורות.",
+    ],
+]
+TABLE_COL_WIDTHS = [1320, 1760, 1760, 3080]  # dxa; sums to 7920
 
 
-def edit(root, body, W):  # noqa: ARG001
-    children = list(body)
-    # Capture element references by ORIGINAL index before any mutation.
-    targets = {idx: children[idx] for idx in REPLACEMENTS_BY_IDX}
-    para_inserts = {idx: children[idx] for idx in INSERT_PARA_AFTER_IDX}
-    table_anchor = children[INSERT_TABLE_AFTER_IDX]
+def apply(body: etree._Element, snapshot: list[etree._Element], W: str) -> None:
+    """Apply §24 edits using element refs captured from the original snapshot."""
+    WNS = f"{{{W}}}"
 
-    # Phase 1: text replacements (in-place; does not shift indices).
-    for idx, prose in REPLACEMENTS_BY_IDX.items():
-        p = targets[idx]
-        if p.tag != f"{{{W}}}p":
-            raise RuntimeError(f"body[{idx}] is not <w:p> (got {p.tag})")
+    # 1. text replacements — order-independent, no shifts.
+    for idx, prose in REPLACEMENTS.items():
+        p = snapshot[idx]
+        if p.tag != f"{WNS}p":
+            raise RuntimeError(f"snapshot[{idx}] is not <w:p> (got {p.tag})")
         replace_paragraph_text(p, prose)
 
-    # Phase 2: insert new paragraphs after specific elements.
-    for idx, prose in INSERT_PARA_AFTER_IDX.items():
-        anchor = para_inserts[idx]
-        new_p = build_paragraph(prose)
-        anchor.addnext(new_p)
+    # 2. insert new paragraphs after their anchors.
+    for idx, prose in INSERT_PARA_AFTER.items():
+        anchor = snapshot[idx]
+        anchor.addnext(build_paragraph(prose))
 
-    # Phase 3: insert the headline table after paragraph 1326 (lead-in).
+    # 3. insert the headline table after the lead-in paragraph.
+    table_anchor = snapshot[INSERT_TABLE_AFTER]
     tbl = build_table(TABLE_ROWS, TABLE_COL_WIDTHS, header=True)
     table_anchor.addnext(tbl)
-
-
-def main() -> int:
-    if not SOURCE.exists():
-        print(f"missing source: {SOURCE}", file=sys.stderr)
-        return 1
-    # Idempotent: always start from the pristine source so the body
-    # indices in REPLACEMENTS_BY_IDX line up.
-    shutil.copy2(SOURCE, DOCX)
-    shutil.copy2(SOURCE, BACKUP)
-    patch_docx(BACKUP, DOCX, edit)
-    ok, diffs = verify_non_document_identical(BACKUP, DOCX)
-    if not ok:
-        print(f"FAIL: post-edit non-document.xml diff ({len(diffs)} entries):")
-        for d in diffs:
-            print(" -", d)
-        # Restore.
-        shutil.copy2(SOURCE, DOCX)
-        return 1
-    print("OK: §24 edits applied; non-document.xml parts byte-identical.")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
