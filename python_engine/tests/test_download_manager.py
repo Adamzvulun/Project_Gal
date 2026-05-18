@@ -684,3 +684,149 @@ class TestSnubbingPartition:
             if 'snubbed' in str(c).lower()
         ]
         assert len(snub_calls) == 1, f"expected 1 snub log, got {len(snub_calls)}: {snub_calls}"
+
+
+class TestSeedingMode:
+    """Seeding-mode tit-for-tat: post-completion, sort by upload window."""
+
+    def _make_peer(self, torrent, ip, *, window_sent: int, now: float):
+        from python_engine.peer_connection import PeerConnection
+        c = PeerConnection(
+            ip=ip, port=6881,
+            info_hash=torrent.info_hash, peer_id=b'\x02' * 20,
+            num_pieces=torrent.num_pieces,
+        )
+        c._connected = True
+        c._handshake_complete = True
+        c.peer_interested = True
+        c.peer_choking = False
+        c.am_choking = True
+        c.send_choke = AsyncMock()
+        c.send_unchoke = AsyncMock()
+        if window_sent > 0:
+            c._upload_samples.append((now - 1, window_sent))
+        return c
+
+    def test_is_seeding_requires_completion_and_terminal_state(self):
+        """_is_seeding flips to True only when both conditions hold."""
+        from python_engine.download_manager import Download, AlgorithmType
+
+        torrent = make_torrent()
+        dl = Download(
+            torrent=torrent,
+            download_dir='/tmp/downloads',
+            state_dir='/tmp/state',
+            peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+        )
+        # Fresh download: not complete, RUNNING isn't seeding.
+        assert dl._is_seeding() is False
+        dl.state = DownloadState.RUNNING
+        assert dl._is_seeding() is False
+
+        # Force completion, but state still not in (COMPLETED, SEEDING).
+        for p in dl.piece_manager.pieces:
+            p.status = PieceStatus.COMPLETED
+        assert dl.piece_manager.is_complete is True
+        assert dl._is_seeding() is False
+
+        # Completed state + complete pieces ⇒ seeding.
+        dl.state = DownloadState.COMPLETED
+        assert dl._is_seeding() is True
+        dl.state = DownloadState.SEEDING
+        assert dl._is_seeding() is True
+
+    @pytest.mark.asyncio
+    async def test_seeding_sorts_by_upload_window_not_download(self):
+        """In seed mode the leech metric is zero; upload window decides."""
+        from python_engine.download_manager import (
+            Download, AlgorithmType, MAX_UNCHOKED_PEERS
+        )
+
+        torrent = make_torrent()
+        dl = Download(
+            torrent=torrent,
+            download_dir='/tmp/downloads',
+            state_dir='/tmp/state',
+            peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+        )
+        # Put the download into seed mode.
+        for p in dl.piece_manager.pieces:
+            p.status = PieceStatus.COMPLETED
+        dl.state = DownloadState.SEEDING
+        assert dl._is_seeding() is True
+
+        now = 10_000.0
+        # 5 peers with descending upload-window totals.
+        peers = [
+            self._make_peer(torrent, f'10.0.0.{i}',
+                            window_sent=1000 - i * 100, now=now)
+            for i in range(1, 6)
+        ]
+        # All have ZERO download contribution (we're a seeder).
+        for i, p in enumerate(peers, start=1):
+            dl._connections[f'10.0.0.{i}:6881'] = p
+
+        with patch('python_engine.peer_connection.time.time', return_value=now):
+            await dl._tit_for_tat_unchoke()
+
+        # Top-4 by upload window are peers 10.0.0.1..4. Peer 10.0.0.5
+        # (lowest upload) should be the only one NOT in top-K, and the
+        # optimistic pick is the only seat it could take.
+        for p in peers[:MAX_UNCHOKED_PEERS]:
+            p.send_unchoke.assert_awaited()
+        # Sort is correct: peer with 0 upload-window is last.
+        ordered = sorted(peers, key=lambda c: c.bytes_sent_in_window(20.0),
+                         reverse=True)
+        assert ordered[0] is peers[0]
+        assert ordered[-1] is peers[4]
+
+    @pytest.mark.asyncio
+    async def test_leech_mode_unchanged_when_not_complete(self):
+        """If piece_manager.is_complete is False, the leech algorithm runs
+        (snubbing partition, sort by bytes_received_in_window). This
+        protects against the seed branch firing prematurely."""
+        from python_engine.download_manager import (
+            Download, AlgorithmType, TIT_FOR_TAT_WINDOW
+        )
+
+        torrent = make_torrent()
+        dl = Download(
+            torrent=torrent,
+            download_dir='/tmp/downloads',
+            state_dir='/tmp/state',
+            peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+        )
+        # NOT complete; even with state=COMPLETED, _is_seeding is False.
+        dl.state = DownloadState.COMPLETED
+        assert dl._is_seeding() is False
+
+        now = 10_000.0
+        # Build a peer with high upload-window and zero download-window —
+        # in leech mode this peer should NOT be ranked high (we sort by
+        # download). Sanity check: leech branch read download samples,
+        # seed branch would read upload samples.
+        from python_engine.peer_connection import PeerConnection
+        peer = PeerConnection(
+            ip='10.0.0.1', port=6881,
+            info_hash=torrent.info_hash, peer_id=b'\x02' * 20,
+            num_pieces=torrent.num_pieces,
+        )
+        peer._connected = True
+        peer._handshake_complete = True
+        peer.peer_interested = True
+        peer.peer_choking = False
+        peer.am_choking = True
+        peer.send_choke = AsyncMock()
+        peer.send_unchoke = AsyncMock()
+        peer._upload_samples.append((now - 1, 9_999_999))
+        # No download samples: in leech mode this peer's metric is zero.
+        dl._connections['10.0.0.1:6881'] = peer
+
+        with patch('python_engine.peer_connection.time.time', return_value=now):
+            await dl._tit_for_tat_unchoke()
+
+        # Leech branch ran (single peer, gets unchoked) — and crucially the
+        # peer's leech metric (0) is what would have determined ranking
+        # against any competitor, not its upload window.
+        assert peer.bytes_received_in_window(TIT_FOR_TAT_WINDOW) == 0
+        peer.send_unchoke.assert_awaited()

@@ -378,3 +378,79 @@ class TestSnubbing:
             # But after the threshold, the same peer becomes snubbed.
         with patch('python_engine.peer_connection.time.time', return_value=1_100.0):
             assert conn.is_snubbed(threshold=60.0) is True
+
+
+class TestUploadSlidingWindow:
+    """bytes_sent_in_window: symmetric to bytes_received_in_window.
+
+    Drives seeding-mode tit-for-tat (sort peers by who drains our
+    upload fastest, not by what they send us — which is zero in
+    seed mode).
+    """
+
+    def _make_conn(self):
+        return PeerConnection(
+            ip='10.0.0.1', port=6881,
+            info_hash=b'\x01' * 20, peer_id=b'\x02' * 20,
+            num_pieces=4
+        )
+
+    def test_empty_returns_zero(self):
+        conn = self._make_conn()
+        assert conn.bytes_sent_in_window() == 0
+
+    def test_sums_recent_uploads(self):
+        conn = self._make_conn()
+        now = 1000.0
+        conn._upload_samples.extend([
+            (now - 5, 100),
+            (now - 2, 250),
+            (now - 1, 50),
+        ])
+        with patch('python_engine.peer_connection.time.time', return_value=now):
+            assert conn.bytes_sent_in_window(window=10.0) == 400
+
+    def test_window_excludes_old_samples(self):
+        conn = self._make_conn()
+        now = 1000.0
+        conn._upload_samples.extend([
+            (now - 25, 99999),  # outside 20s window
+            (now - 5, 200),
+            (now - 1, 100),
+        ])
+        with patch('python_engine.peer_connection.time.time', return_value=now):
+            assert conn.bytes_sent_in_window(window=20.0) == 300
+
+    def test_does_not_mutate_samples(self):
+        conn = self._make_conn()
+        now = 1000.0
+        conn._upload_samples.extend([
+            (now - 30, 100),
+            (now - 1, 400),
+        ])
+        original_len = len(conn._upload_samples)
+        with patch('python_engine.peer_connection.time.time', return_value=now):
+            conn.bytes_sent_in_window(5.0)
+        assert len(conn._upload_samples) == original_len
+
+    @pytest.mark.asyncio
+    async def test_send_piece_appends_and_evicts(self):
+        """send_piece must append a sample and drop stale ones."""
+        conn = self._make_conn()
+        # Stub the write side so we don't touch real sockets.
+        conn.send_message = AsyncMock()
+        # Seed with a stale sample that should get evicted.
+        conn._upload_samples.append((time.time() - 100, 999))
+        block_data = b'\xab' * 512
+        await conn.send_piece(piece_index=0, begin=0, data=block_data)
+        # Stale sample dropped; new one appended.
+        assert len(conn._upload_samples) == 1
+        assert conn._upload_samples[0][1] == 512
+        # Window read agrees with cumulative bytes_uploaded.
+        assert conn.bytes_sent_in_window(20.0) == 512
+        assert conn.bytes_uploaded == 512
+
+    def test_cumulative_bytes_uploaded_unchanged(self):
+        """The new window metric doesn't replace the cumulative counter."""
+        conn = self._make_conn()
+        assert conn.bytes_uploaded == 0
