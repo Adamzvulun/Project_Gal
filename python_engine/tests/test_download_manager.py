@@ -505,3 +505,182 @@ class TestTitForTatSlidingWindow:
             assert a.bytes_received_in_window(TIT_FOR_TAT_WINDOW) == 0
             assert b.bytes_received_in_window(TIT_FOR_TAT_WINDOW) == 100
             await dl._tit_for_tat_unchoke()
+
+
+class TestSnubbingPartition:
+    """Verify _tit_for_tat_unchoke demotes snubbed peers.
+
+    A snubbed peer (unchoked us, then went silent) must not occupy a top-K
+    unchoke slot when healthy alternatives exist — otherwise a buggy or
+    malicious peer can lock a slot forever.
+    """
+
+    def _make_peer(self, torrent, ip, *, snubbed: bool, window_bytes: int,
+                   now: float):
+        from python_engine.peer_connection import PeerConnection
+        c = PeerConnection(
+            ip=ip, port=6881,
+            info_hash=torrent.info_hash, peer_id=b'\x02' * 20,
+            num_pieces=torrent.num_pieces,
+        )
+        c._connected = True
+        c._handshake_complete = True
+        c.peer_interested = True
+        c.peer_choking = False  # they advertise willingness to send
+        c.am_choking = True
+        c.send_choke = AsyncMock()
+        c.send_unchoke = AsyncMock()
+        # Inject a contribution sample inside the 20s window.
+        if window_bytes > 0:
+            c._download_samples.append((now - 1, window_bytes))
+        c._connect_time = now - 1000  # well past any threshold
+        c._last_request_time = now - 1000  # we did ask
+        if snubbed:
+            c._last_piece_time = now - 1000  # silent for ages
+        else:
+            c._last_piece_time = now - 1  # fresh activity
+        return c
+
+    @pytest.mark.asyncio
+    async def test_snubbed_peer_demoted_when_alternatives_exist(self):
+        """5 peers: 1 snubbed + 4 healthy. Snubbed must be choked, healthy unchoked."""
+        from python_engine.download_manager import Download, AlgorithmType
+
+        torrent = make_torrent()
+        dl = Download(
+            torrent=torrent,
+            download_dir='/tmp/downloads',
+            state_dir='/tmp/state',
+            peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+        )
+        now = 10_000.0
+
+        # The snubbed peer has the *highest* window contribution — without
+        # the partition logic it would win the sort. The partition demotes it.
+        snubbed = self._make_peer(torrent, '10.0.0.99',
+                                  snubbed=True, window_bytes=10_000_000, now=now)
+        healthy = [
+            self._make_peer(torrent, f'10.0.0.{i}',
+                            snubbed=False, window_bytes=100, now=now)
+            for i in range(1, 5)
+        ]
+        dl._connections['10.0.0.99:6881'] = snubbed
+        for i, p in enumerate(healthy, start=1):
+            dl._connections[f'10.0.0.{i}:6881'] = p
+
+        with patch('python_engine.peer_connection.time.time', return_value=now):
+            await dl._tit_for_tat_unchoke()
+
+        # All 4 healthy peers got unchoked; the snubbed peer did NOT,
+        # despite having the largest window contribution.
+        for p in healthy:
+            p.send_unchoke.assert_awaited()
+        snubbed.send_unchoke.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_snubbed_peer_kept_when_only_choice(self):
+        """1 snubbed + 1 healthy: with K=4 both fit; snubbed is the fallback."""
+        from python_engine.download_manager import Download, AlgorithmType
+
+        torrent = make_torrent()
+        dl = Download(
+            torrent=torrent,
+            download_dir='/tmp/downloads',
+            state_dir='/tmp/state',
+            peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+        )
+        now = 10_000.0
+
+        snubbed = self._make_peer(torrent, '10.0.0.99',
+                                  snubbed=True, window_bytes=500, now=now)
+        healthy = self._make_peer(torrent, '10.0.0.1',
+                                  snubbed=False, window_bytes=100, now=now)
+        dl._connections['10.0.0.99:6881'] = snubbed
+        dl._connections['10.0.0.1:6881'] = healthy
+
+        with patch('python_engine.peer_connection.time.time', return_value=now):
+            await dl._tit_for_tat_unchoke()
+
+        # Healthy peer must be unchoked (it's a fine candidate). With only
+        # one healthy peer the snubbed one fills a remaining slot — better
+        # than choking everyone — but the healthy one is the priority.
+        healthy.send_unchoke.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_optimistic_unchoke_prefers_non_snubbed(self):
+        """When top-K is full of healthy peers, the optimistic pick must
+        avoid snubbed peers if a non-snubbed remainder exists."""
+        from python_engine.download_manager import (
+            Download, AlgorithmType, MAX_UNCHOKED_PEERS
+        )
+
+        torrent = make_torrent()
+        dl = Download(
+            torrent=torrent,
+            download_dir='/tmp/downloads',
+            state_dir='/tmp/state',
+            peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+        )
+        now = 10_000.0
+
+        # 4 healthy top contributors + 1 healthy remainder + 1 snubbed.
+        # The optimistic unchoke should pick the healthy remainder.
+        top = [
+            self._make_peer(torrent, f'10.0.0.{i}',
+                            snubbed=False, window_bytes=10_000 - i, now=now)
+            for i in range(1, MAX_UNCHOKED_PEERS + 1)
+        ]
+        remainder = self._make_peer(torrent, '10.0.0.50',
+                                    snubbed=False, window_bytes=1, now=now)
+        snubbed = self._make_peer(torrent, '10.0.0.99',
+                                  snubbed=True, window_bytes=99_999_999, now=now)
+        for i, p in enumerate(top, start=1):
+            dl._connections[f'10.0.0.{i}:6881'] = p
+        dl._connections['10.0.0.50:6881'] = remainder
+        dl._connections['10.0.0.99:6881'] = snubbed
+
+        with patch('python_engine.peer_connection.time.time', return_value=now):
+            await dl._tit_for_tat_unchoke()
+
+        # Each top peer is unchoked.
+        for p in top:
+            p.send_unchoke.assert_awaited()
+        # The optimistic pick must be the non-snubbed remainder, not the
+        # snubbed peer (despite snubbed peer's massive window total).
+        remainder.send_unchoke.assert_awaited()
+        snubbed.send_unchoke.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_snubbed_peer_logged_once_per_episode(self):
+        """The INFO log line for a snubbed peer must fire exactly once per
+        snub episode (not every 10s choke cycle)."""
+        from python_engine.download_manager import Download, AlgorithmType
+
+        torrent = make_torrent()
+        dl = Download(
+            torrent=torrent,
+            download_dir='/tmp/downloads',
+            state_dir='/tmp/state',
+            peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+        )
+        now = 10_000.0
+
+        snubbed = self._make_peer(torrent, '10.0.0.99',
+                                  snubbed=True, window_bytes=500, now=now)
+        healthy = self._make_peer(torrent, '10.0.0.1',
+                                  snubbed=False, window_bytes=100, now=now)
+        dl._connections['10.0.0.99:6881'] = snubbed
+        dl._connections['10.0.0.1:6881'] = healthy
+
+        with patch('python_engine.peer_connection.time.time', return_value=now), \
+             patch('python_engine.download_manager.logger') as mock_logger:
+            await dl._tit_for_tat_unchoke()
+            await dl._tit_for_tat_unchoke()
+            await dl._tit_for_tat_unchoke()
+
+        # Only the first call should have logged the snub.
+        snub_calls = [
+            c for c in mock_logger.info.call_args_list
+            if 'snubbed' in str(c).lower()
+        ]
+        assert len(snub_calls) == 1, f"expected 1 snub log, got {len(snub_calls)}: {snub_calls}"

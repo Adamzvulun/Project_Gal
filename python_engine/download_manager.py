@@ -140,6 +140,11 @@ class Download:
         # Round-robin state
         self._rr_index = 0
 
+        # Snubbing: track which peers we have already logged as snubbed
+        # so we don't spam an INFO line every 10-second choke cycle. The
+        # entry is removed when a peer leaves the snubbed set.
+        self._previously_snubbed: Set[str] = set()
+
         # Guard to ensure completion logic runs exactly once
         self._completion_handled = False
 
@@ -524,13 +529,19 @@ class Download:
     async def _tit_for_tat_unchoke(self):
         """Implement the Tit-for-Tat choke/unchoke algorithm.
 
-        1. Get all interested peers
-        2. Sort by sliding-window contribution (bytes received in the last
-           TIT_FOR_TAT_WINDOW seconds) — a peer that contributed early and
-           then went silent does NOT keep a high score forever
-        3. Unchoke top K peers
-        4. Optimistic unchoke: randomly unchoke one additional peer
-        5. Choke all others
+        1. Get all interested peers.
+        2. Partition into non_snubbed and snubbed (see PeerConnection.is_snubbed).
+           A snubbed peer has unchoked us but stopped sending — without this
+           split they would keep an unchoke slot forever via their cumulative
+           or even windowed contribution.
+        3. Sort non_snubbed by sliding-window contribution (bytes received in
+           the last TIT_FOR_TAT_WINDOW seconds) — a peer that contributed
+           early then went silent does NOT keep a high score forever.
+        4. Fill top K from non_snubbed first; only fall back to snubbed peers
+           when fewer than K healthy candidates exist.
+        5. Optimistic unchoke: pick one random peer not in top K, preferring
+           non-snubbed candidates so a freshly-snubbed peer is replaced.
+        6. Choke all others.
         """
         interested_peers = [
             (key, conn) for key, conn in self._connections.items()
@@ -540,28 +551,53 @@ class Download:
         if not interested_peers:
             return
 
-        # Sort by sliding-window contribution. Cumulative bytes_downloaded
-        # would let an early contributor that has since stopped keep its
-        # unchoke slot indefinitely; the window punishes silence.
-        interested_peers.sort(
+        # Partition: snubbed peers shouldn't compete on contribution metric
+        # with healthy peers — silence isn't contribution.
+        non_snubbed = []
+        snubbed = []
+        for key, conn in interested_peers:
+            if conn.is_snubbed():
+                snubbed.append((key, conn))
+            else:
+                non_snubbed.append((key, conn))
+
+        # Log newly-snubbed peers once per snub episode (not per cycle).
+        current_snubbed_keys = {key for key, _ in snubbed}
+        for key in current_snubbed_keys - self._previously_snubbed:
+            logger.info(f"Peer {key} snubbed (unchoked us but no PIECE in >60s); demoting")
+        # Drop keys that recovered so a future snub gets logged again.
+        self._previously_snubbed = current_snubbed_keys
+
+        # Sort non_snubbed by sliding-window contribution. Cumulative
+        # bytes_downloaded would let an early contributor that has since
+        # stopped keep its unchoke slot indefinitely; the window punishes
+        # silence.
+        non_snubbed.sort(
             key=lambda x: x[1].bytes_received_in_window(TIT_FOR_TAT_WINDOW),
             reverse=True
         )
 
-        # Select top K
-        to_unchoke = set()
-        for i, (key, conn) in enumerate(interested_peers):
-            if i < MAX_UNCHOKED_PEERS:
+        # Fill top K from healthy peers first; only dip into snubbed when
+        # we don't have enough non_snubbed candidates.
+        to_unchoke: Set[str] = set()
+        for key, _ in non_snubbed[:MAX_UNCHOKED_PEERS]:
+            to_unchoke.add(key)
+        if len(to_unchoke) < MAX_UNCHOKED_PEERS:
+            for key, _ in snubbed[:MAX_UNCHOKED_PEERS - len(to_unchoke)]:
                 to_unchoke.add(key)
 
-        # Optimistic unchoke: pick one random peer not in top K
-        remaining = [
-            (key, conn) for key, conn in interested_peers
-            if key not in to_unchoke
+        # Optimistic unchoke: pick a random *healthy* peer outside the top K.
+        # The purpose of optimistic unchoke is discovering new contributors;
+        # promoting a snubbed peer here would defeat the demotion above, so
+        # we never optimistically unchoke a snubbed peer when a non-snubbed
+        # candidate exists. If non_snubbed is already fully in to_unchoke,
+        # we skip optimistic unchoke entirely this cycle.
+        non_snubbed_remaining = [
+            (key, conn) for key, conn in non_snubbed if key not in to_unchoke
         ]
-        if remaining:
+        if non_snubbed_remaining:
             import random
-            opt_key, _ = random.choice(remaining)
+            opt_key, _ = random.choice(non_snubbed_remaining)
             to_unchoke.add(opt_key)
 
         # Apply choke/unchoke decisions
