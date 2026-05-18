@@ -10,7 +10,7 @@ three independent sub-steps:
 | --- | --- | --- |
 | **4a** | Sliding-window contribution metric | **this doc** |
 | 4b   | Snubbing (detect peers that unchoke us then stop sending) | done — see `PROGRESS_STEP_4B.md` |
-| 4c   | Seeding mode (post-completion, sort by upload-window) | TODO |
+| 4c   | Seeding mode (post-completion, sort by upload-window) | done — see `PROGRESS_STEP_4C.md` |
 
 For each step:
 

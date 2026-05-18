@@ -9,7 +9,7 @@ Step 4 splits the "deepen tit-for-tat" critique into three sub-steps:
 | --- | --- | --- |
 | 4a | Sliding-window contribution metric | done (see `PROGRESS_STEP_4A.md`) |
 | **4b** | **Snubbing — detect peers that unchoke us then stop sending** | **this doc** |
-| 4c | Seeding mode (post-completion, sort by upload-window) | TODO |
+| 4c | Seeding mode (post-completion, sort by upload-window) | done — see `PROGRESS_STEP_4C.md` |
 
 For each step:
 
