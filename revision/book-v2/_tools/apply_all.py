@@ -19,6 +19,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import edit_24  # noqa: E402
 import edit_25_26  # noqa: E402
+import edit_72  # noqa: E402
+import edit_62  # noqa: E402
+import edit_52  # noqa: E402
+import edit_71  # noqa: E402
+import edit_113  # noqa: E402
+import edit_tone  # noqa: E402
+import edit_255  # noqa: E402
+import edit_trim  # noqa: E402
 from docx_patcher import patch_docx, verify_non_document_identical, W  # noqa: E402
 
 DOCX = Path("revision/book-v2/ספר פרוייקט אדם זבולון.docx")
@@ -27,8 +35,16 @@ BACKUP = Path("revision/book-v2/_tools/before_all.docx")
 
 
 PASSES = [
+    ("§3.3/§7.1/§7.2 attribution sentences", edit_tone.apply),
+    ("§5.2.1 bencode + info_hash worked example", edit_52.apply),
+    ("§6.2.1 handshake bytes + §6.2.2 framing", edit_62.apply),
+    ("§7.1 rarest-first depth + thundering-herd pain", edit_71.apply),
+    ("§7.2 tit-for-tat — sliding window / snubbing / seeding", edit_72.apply),
+    ("§11.3 asyncio+Flask hazard disclosure", edit_113.apply),
     ("§24 empirical + E2E", edit_24.apply),
     ("§25/§26 auto-resume update", edit_25_26.apply),
+    ("§25.5 honest limitations", edit_255.apply),
+    ("§4h trim inflated claims", edit_trim.apply),
 ]
 
 

@@ -142,6 +142,52 @@ def build_paragraph(src: str) -> etree._Element:
     return p
 
 
+def build_heading(text: str, level: int = 4) -> etree._Element:
+    """Build a heading paragraph (Heading{level}) with bidi and Arial bold.
+
+    Matches the styling pattern used by existing headings in the doc
+    (see source idx 102 for H4).
+    """
+    p = etree.Element(f"{WNS}p")
+    pPr = etree.SubElement(p, f"{WNS}pPr")
+
+    pStyle = etree.SubElement(pPr, f"{WNS}pStyle")
+    pStyle.set(f"{WNS}val", f"Heading{level}")
+
+    bidi = etree.SubElement(pPr, f"{WNS}bidi")
+    bidi.set(f"{WNS}val", "1")
+
+    # Default heading run-properties (Arial bold, color 000000).
+    rPr_default = etree.SubElement(pPr, f"{WNS}rPr")
+    rFonts = etree.SubElement(rPr_default, f"{WNS}rFonts")
+    for attr in ("ascii", "cs", "eastAsia", "hAnsi"):
+        rFonts.set(f"{WNS}{attr}", "Arial")
+    b = etree.SubElement(rPr_default, f"{WNS}b")
+    b.set(f"{WNS}val", "1")
+    bCs = etree.SubElement(rPr_default, f"{WNS}bCs")
+    bCs.set(f"{WNS}val", "1")
+
+    # Now emit runs for the actual heading text (RTL-aware).
+    for is_h, seg in _split_by_rtl(text):
+        if not seg:
+            continue
+        r = etree.SubElement(p, f"{WNS}r")
+        rPr = etree.SubElement(r, f"{WNS}rPr")
+        rFonts_r = etree.SubElement(rPr, f"{WNS}rFonts")
+        for attr in ("ascii", "cs", "eastAsia", "hAnsi"):
+            rFonts_r.set(f"{WNS}{attr}", "Arial")
+        b_r = etree.SubElement(rPr, f"{WNS}b")
+        b_r.set(f"{WNS}val", "1")
+        bCs_r = etree.SubElement(rPr, f"{WNS}bCs")
+        bCs_r.set(f"{WNS}val", "1")
+        rtl = etree.SubElement(rPr, f"{WNS}rtl")
+        rtl.set(f"{WNS}val", "1" if is_h else "0")
+        t = etree.SubElement(r, f"{WNS}t")
+        t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        t.text = seg
+    return p
+
+
 def replace_paragraph_text(p: etree._Element, src: str) -> None:
     """Replace all <w:r> children of p with runs rendered from src.
 
