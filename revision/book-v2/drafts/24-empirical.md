@@ -4,7 +4,8 @@ Working file: `revision/book-v2/ספר פרוייקט אדם זבולון.docx`
 Target paragraphs (current body indices):
 
 * `1316` — "160 פונקציות בדיקה..." → update counts
-* `1322` — "פערים מתועדים: ...אין end-to-end network tests" → remove the E2E gap; add a real E2E sentence
+* `1322` — "פערים מתועדים: ...אין end-to-end network tests" → **edit** to drop the false E2E-gap admission (keep only the Swing-Java gap)
+* (insert after `1322`) — **new paragraph** describing the mock-peer E2E test
 * `1324–1330` — "הערכה אמפירית" planned-experiment paragraphs → **replace** with real results
 
 Source citations: `python_engine/experiments/run_comparison.py`, `python_engine/tests/test_e2e_peer.py`, `data/experiments/comparison_summary.csv`, `data/experiments/comparison_peers.csv`, `data/experiments/README.md`.
@@ -17,9 +18,13 @@ Source citations: `python_engine/experiments/run_comparison.py`, `python_engine/
 
 *Notes for me, not for the book: 212 is the current count after steps 1–4 (was 172 originally → 185 after step 3 → 203 after 4a/4b → 212 after 4c). Sentence intentionally drops the "1,421 שורות קוד בדיקה" claim because the file/line count isn't an interesting number and is easy to attack — we substitute a meaningful claim (full-suite runtime).*
 
-## (B) Add a new paragraph immediately after 1322 (before the §24 "הערכה אמפירית" heading at 1323)
+## (B-1) Replace paragraph 1322 (drop the E2E-gap admission)
 
-> **תוספת end-to-end:** מאחר וה-unit tests בודקים כל מודול בנפרד, נוסף ניסוי E2E שבודק את **כל ה-Peer Wire Protocol stack בבת אחת**. ב-`python_engine/tests/test_e2e_peer.py` מוקם peer-mock אסינכרוני שעונה ב-handshake → bitfield → unchoke → piece על פי BEP-3, וה-`PeerConnection` שלנו מנהל מולו handshake, מפענח את ה-length-prefix framing, שולח `request`, מקבל `piece` ומאמת SHA-1. הניסוי הזה הוא הראיה הישירה ש-(handshake bytes ↔ framing ↔ state machine ↔ hash verification) עובדים יחד מקצה לקצה, ולא רק בנפרד.
+> פערים מתועדים: אין בדיקות ל-Swing components ב-Java (headless GUI testing מסובך).
+
+## (B-2) Add a new paragraph immediately after 1322 (before the §24 "הערכה אמפירית" heading at 1323)
+
+> **תוספת end-to-end:** מאחר וה-unit tests בודקים כל מודול בנפרד, נוסף ניסוי E2E שבודק את **כל ה-Peer Wire Protocol stack בבת אחת**. ב-`python_engine/tests/test_e2e_peer.py` מוקם peer-mock אסינכרוני שעונה ב-handshake → bitfield → unchoke → piece על פי BEP-3, וה-`PeerConnection` מנהל מולו handshake, מפענח את ה-length-prefix framing, שולח `request`, מקבל `piece` ומאמת SHA-1. הניסוי הזה הוא הראיה הישירה ש-(handshake bytes ↔ framing ↔ state machine ↔ hash verification) עובדים יחד מקצה לקצה, ולא רק בנפרד.
 
 *This addresses Step 2 explicitly. Cites `test_e2e_peer.py` by name as required by PLAN §2.*
 
@@ -29,7 +34,7 @@ The replacement is one short methodology paragraph, one results table, one inter
 
 ### Paragraph 1 — methodology
 
-> ההערכה האמפירית בודקת את אלגוריתם בחירת ה-pieces (`rarest_first` מול `random`) ב-swarm סינתטי על loopback, לא ב-swarm ציבורי. הסיבה לבחירה הזו היא **שחזוריות**: ב-swarm אמיתי, מספר ה-seeders ורוחב הפס משתנים מדקה לדקה, וההפרש בין שתי הרצות של אותה תצורה גדול יותר מההפרש האלגוריתמי שאנחנו רוצים למדוד. בהרצה המקומית הזו, היחיד שמשתנה בין הרצות הוא האלגוריתם הנבדק.
+> ההערכה האמפירית בודקת את אלגוריתם בחירת ה-pieces (`rarest_first` מול `random`) ב-swarm סינתטי על loopback, לא ב-swarm ציבורי. הסיבה לבחירה הזו היא **שחזוריות**: ב-swarm אמיתי, מספר ה-seeders ורוחב הפס משתנים מדקה לדקה, וההפרש בין שתי הרצות של אותה תצורה גדול יותר מההפרש האלגוריתמי הנמדד. בהרצה המקומית הזו, היחיד שמשתנה בין הרצות הוא האלגוריתם הנבדק.
 
 ### Paragraph 2 — setup
 
@@ -49,11 +54,11 @@ The replacement is one short methodology paragraph, one results table, one inter
 
 ### Paragraph 4 — interpretation (honest, not bravado)
 
-> ההפרש הוא **12.5%** ב-`full` (512 KB מול 576 KB). זה לא הפרש דרמטי, ואין הפרש מובהק ב-wall-clock time: שתי התצורות מסיימות ב-~30 מילי-שניות, כי על loopback צוואר הבקבוק הוא ה-asyncio event loop ולא רוחב הפס. אבל מה שהניסוי **כן** מוכיח, באופן דטרמיניסטי על פני 5 הרצות, הוא שה-rarest-first שלנו אכן מרכז את הביקוש לחתיכות הנדירות ב-peer היחיד שמחזיק בהן, ופורק את החצי השכיח על פני שלושת ה-peers האחרים במקביל. תחת random, ה-Engine "מבזבז" חלק מהבקשות ל-`full` על חתיכות שכיחות ש-`low_*` יכולים לספק.
+> ההפרש הוא **12.5%** ב-`full` (512 KB מול 576 KB). זה לא הפרש דרמטי, ואין הפרש מובהק ב-wall-clock time: שתי התצורות מסיימות ב-~30 מילי-שניות, כי על loopback צוואר הבקבוק הוא ה-asyncio event loop ולא רוחב הפס. אבל מה שהניסוי **כן** מוכיח, באופן דטרמיניסטי על פני 5 הרצות, הוא שמימוש ה-rarest-first אכן מרכז את הביקוש לחתיכות הנדירות ב-peer היחיד שמחזיק בהן, ופורק את החצי השכיח על פני שלושת ה-peers האחרים במקביל. תחת random, ה-Engine "מבזבז" חלק מהבקשות ל-`full` על חתיכות שכיחות ש-`low_*` יכולים לספק.
 
 ### Paragraph 5 — honest limitations (the chapter explicitly admits what it doesn't test)
 
-> מה הניסוי הזה **אינו** מודד: (א) speedup ב-swarm ציבורי אמיתי — כדי לעשות זאת היינו צריכים להתחבר ל-swarm חי ולסבול את רעש הרשת, וזה דורש פתרון NAT; (ב) את ה"endgame mode" שמצדיק את rarest-first בפרודקשן (peer churn מאמצע ההורדה) — סימולציית churn דורשת תשתית נוספת שלא נבנתה; (ג) השוואה של בחירת ה-peers (tit-for-tat מול round-robin) — הניסוי משאיר את האלגוריתם הזה קבוע ובודק רק את בחירת ה-pieces. הניסוי **כן** עונה על השאלה המצומצמת הבאה: "בהינתן swarm שבו זמינות החתיכות איננה אחידה — האם המימוש שלנו של rarest-first אכן מרכז את הביקוש לחתיכות הנדירות?". התשובה, על פי הנתונים: כן, באופן דטרמיניסטי.
+> מה הניסוי הזה **אינו** מודד: (א) speedup ב-swarm ציבורי אמיתי — מדידה כזו דורשת התחברות ל-swarm חי, התמודדות עם רעש הרשת, ופתרון NAT; (ב) את ה"endgame mode" שמצדיק את rarest-first בפרודקשן (peer churn מאמצע ההורדה) — סימולציית churn דורשת תשתית נוספת שאינה כלולה בפרויקט; (ג) השוואה של בחירת ה-peers (tit-for-tat מול round-robin) — הניסוי משאיר את האלגוריתם הזה קבוע ובודק רק את בחירת ה-pieces. הניסוי **כן** עונה על השאלה המצומצמת הבאה: "בהינתן swarm שבו זמינות החתיכות איננה אחידה — האם המימוש של rarest-first אכן מרכז את הביקוש לחתיכות הנדירות?". התשובה, על פי הנתונים: כן, באופן דטרמיניסטי.
 
 ### Paragraph 6 — reproducibility
 

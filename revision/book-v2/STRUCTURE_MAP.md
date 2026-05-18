@@ -1,6 +1,6 @@
 # Document structure map — `ספר פרוייקט אדם זבולון.docx`
 
-Source: `revision/book-v2/ספר פרוייקט אדם זבולון.docx` · body children: 1544 · paragraphs: 1512 · image paragraphs: 21 · headings: 292 · section breaks: 0
+Source: `revision/book-v2/ספר פרוייקט אדם זבולון.docx` · body children: 1545 · paragraphs: 1513 · image paragraphs: 21 · headings: 292 · section breaks: 0
 
 ## Headings (TOC) — paragraph index → heading level → text
 
@@ -212,73 +212,72 @@ Source: `revision/book-v2/ספר פרוייקט אדם זבולון.docx` · bod
 | 1306 | H2 |  | פתרון בעיות |
 | 1314 | H1 |  | 24. בדיקות והערכה |
 | 1315 | H2 |  | בדיקות יחידה (Unit Tests) |
-| 1323 | H2 |  | הערכה אמפירית |
-| 1331 | H2 |  | בדיקות איכות נוספות |
-| 1337 | H1 |  | 25. מסקנות |
-| 1350 | H1 |  | 26. פיתוחים עתידיים |
-| 1352 | H2 |  | רשת ופרוטוקול |
-| 1358 | H2 |  | אבטחה והצפנה |
-| 1362 | H2 |  | חוויית משתמש |
-| 1368 | H2 |  | ביצועים ויכולת |
-| 1372 | H2 |  | תפעול |
-| 1376 | H2 |  | סדר עדיפויות מומלץ |
-| 1379 | H1 |  | 27. ביבליוגרפיה |
-| 1380 | H2 |  | מפרטי BitTorrent (BEPs) |
-| 1387 | H2 |  | מאמרים אקדמיים |
-| 1399 | H2 |  | תיעוד טכני |
-| 1408 | H2 |  | פרויקטים פתוחים שנבחנו |
-| 1415 | H2 |  | ספרי לימוד וקורסים |
-| 1420 | H1 |  | נספח א’ – קטעי קוד מרכזיים |
-| 1422 | H2 |  | א.1 -Download._download_loop (האלגוריתם הראשי) |
-| 1425 | H2 |  |  |
+| 1324 | H2 |  | הערכה אמפירית |
+| 1332 | H2 |  | בדיקות איכות נוספות |
+| 1338 | H1 |  | 25. מסקנות |
+| 1351 | H1 |  | 26. פיתוחים עתידיים |
+| 1353 | H2 |  | רשת ופרוטוקול |
+| 1359 | H2 |  | אבטחה והצפנה |
+| 1363 | H2 |  | חוויית משתמש |
+| 1369 | H2 |  | ביצועים ויכולת |
+| 1373 | H2 |  | תפעול |
+| 1377 | H2 |  | סדר עדיפויות מומלץ |
+| 1380 | H1 |  | 27. ביבליוגרפיה |
+| 1381 | H2 |  | מפרטי BitTorrent (BEPs) |
+| 1388 | H2 |  | מאמרים אקדמיים |
+| 1400 | H2 |  | תיעוד טכני |
+| 1409 | H2 |  | פרויקטים פתוחים שנבחנו |
+| 1416 | H2 |  | ספרי לימוד וקורסים |
+| 1421 | H1 |  | נספח א’ – קטעי קוד מרכזיים |
+| 1423 | H2 |  | א.1 -Download._download_loop (האלגוריתם הראשי) |
 | 1426 | H2 |  |  |
 | 1427 | H2 |  |  |
 | 1428 | H2 |  |  |
 | 1429 | H2 |  |  |
 | 1430 | H2 |  |  |
-| 1434 | H2 |  | א.2 -select_piece_rarest_first (בחירת piece) |
-| 1437 | H2 |  |  |
-| 1440 | H2 |  | א.3 -_tit_for_tat_unchoke (אלגוריתם choke/unchoke) |
-| 1443 | H2 |  | א.4 -Piece.submit_block ו-Piece.verify_hash |
-| 1446 | H2 |  |  |
+| 1431 | H2 |  |  |
+| 1435 | H2 |  | א.2 -select_piece_rarest_first (בחירת piece) |
+| 1438 | H2 |  |  |
+| 1441 | H2 |  | א.3 -_tit_for_tat_unchoke (אלגוריתם choke/unchoke) |
+| 1444 | H2 |  | א.4 -Piece.submit_block ו-Piece.verify_hash |
 | 1447 | H2 |  |  |
 | 1448 | H2 |  |  |
 | 1449 | H2 |  |  |
 | 1450 | H2 |  |  |
 | 1451 | H2 |  |  |
 | 1452 | H2 |  |  |
-| 1455 | H2 |  | א.5 -_send_handshake + _receive_handshake |
-| 1458 | H2 |  |  |
-| 1459 | H2 |  | א.6 -_read_message (parsing הודעות Peer Wire Protocol) |
-| 1462 | H2 |  | א.7 -Download._on_peer_message (זרימת קבלת PIECE) |
-| 1465 | H2 |  |  |
+| 1453 | H2 |  |  |
+| 1456 | H2 |  | א.5 -_send_handshake + _receive_handshake |
+| 1459 | H2 |  |  |
+| 1460 | H2 |  | א.6 -_read_message (parsing הודעות Peer Wire Protocol) |
+| 1463 | H2 |  | א.7 -Download._on_peer_message (זרימת קבלת PIECE) |
 | 1466 | H2 |  |  |
 | 1467 | H2 |  |  |
 | 1468 | H2 |  |  |
 | 1469 | H2 |  |  |
-| 1471 | H2 |  | א.8 -PeerReputation + SecurityManager |
-| 1474 | H2 |  |  |
+| 1470 | H2 |  |  |
+| 1472 | H2 |  | א.8 -PeerReputation + SecurityManager |
 | 1475 | H2 |  |  |
 | 1476 | H2 |  |  |
-| 1479 | H2 |  | א.9 -TrackerClient.announce (תקשורת עם tracker) |
-| 1482 | H2 |  |  |
+| 1477 | H2 |  |  |
+| 1480 | H2 |  | א.9 -TrackerClient.announce (תקשורת עם tracker) |
 | 1483 | H2 |  |  |
 | 1484 | H2 |  |  |
 | 1485 | H2 |  |  |
 | 1486 | H2 |  |  |
 | 1487 | H2 |  |  |
 | 1488 | H2 |  |  |
-| 1490 | H2 |  | א.10 -TorrentMetadata._parse_metadata |
-| 1493 | H2 |  |  |
+| 1489 | H2 |  |  |
+| 1491 | H2 |  | א.10 -TorrentMetadata._parse_metadata |
 | 1494 | H2 |  |  |
 | 1495 | H2 |  |  |
 | 1496 | H2 |  |  |
 | 1497 | H2 |  |  |
 | 1498 | H2 |  |  |
 | 1499 | H2 |  |  |
-| 1502 | H2 |  | א.11 -bencode.encode ו-bencode.decode |
-| 1505 | H2 |  | א.12 -init_database (סכמת SQLite) |
-| 1508 | H2 |  |  |
+| 1500 | H2 |  |  |
+| 1503 | H2 |  | א.11 -bencode.encode ו-bencode.decode |
+| 1506 | H2 |  | א.12 -init_database (סכמת SQLite) |
 | 1509 | H2 |  |  |
 | 1510 | H2 |  |  |
 | 1511 | H2 |  |  |
@@ -286,18 +285,19 @@ Source: `revision/book-v2/ספר פרוייקט אדם זבולון.docx` · bod
 | 1513 | H2 |  |  |
 | 1514 | H2 |  |  |
 | 1515 | H2 |  |  |
-| 1519 | H2 |  | א.13 -_start_event_loop + _run_async (Async Bridge) |
-| 1522 | H2 |  | א.14 -ApiService.startDownload (Java HTTP Client) |
-| 1525 | H2 |  | א.15 -ApiService.getStatus |
-| 1528 | H2 |  |  |
+| 1516 | H2 |  |  |
+| 1520 | H2 |  | א.13 -_start_event_loop + _run_async (Async Bridge) |
+| 1523 | H2 |  | א.14 -ApiService.startDownload (Java HTTP Client) |
+| 1526 | H2 |  | א.15 -ApiService.getStatus |
 | 1529 | H2 |  |  |
 | 1530 | H2 |  |  |
 | 1531 | H2 |  |  |
 | 1532 | H2 |  |  |
 | 1533 | H2 |  |  |
 | 1534 | H2 |  |  |
-| 1537 | H2 |  | א.16 -TorrentClientGUI.startStatusUpdater + refreshStatus |
-| 1540 | H2 |  | א.17 -ProgressBarRenderer (renderer מותאם) |
+| 1535 | H2 |  |  |
+| 1538 | H2 |  | א.16 -TorrentClientGUI.startStatusUpdater + refreshStatus |
+| 1541 | H2 |  | א.17 -ProgressBarRenderer (renderer מותאם) |
 
 ## Image-bearing paragraphs (do NOT touch)
 
