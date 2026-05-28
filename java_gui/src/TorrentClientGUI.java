@@ -451,7 +451,7 @@ public class TorrentClientGUI extends JFrame {
 
                 // Poll logs for each active download
                 for (ApiService.TorrentStatus status : statuses) {
-                    if ("Running".equals(status.state) || "Error".equals(status.state) || "Completed".equals(status.state)) {
+                    if ("Running".equals(status.state) || "Error".equals(status.state) || "Completed".equals(status.state) || "Seeding".equals(status.state)) {
                         int since = logSeqTracker.getOrDefault(status.id, 0);
                         try {
                             JSONArray logs = apiService.getLogs(status.id, since);
@@ -485,7 +485,9 @@ public class TorrentClientGUI extends JFrame {
         // Detect completion transitions and show notification
         for (ApiService.TorrentStatus status : statuses) {
             String prevState = previousStates.get(status.id);
-            if ("Completed".equals(status.state) && !"Completed".equals(prevState)) {
+            boolean nowFinished = "Completed".equals(status.state) || "Seeding".equals(status.state);
+            boolean wasFinished = "Completed".equals(prevState) || "Seeding".equals(prevState);
+            if (nowFinished && !wasFinished) {
                 String msg = status.name + "\nSaved to: " + status.downloadPath;
                 SwingUtilities.invokeLater(() ->
                     JOptionPane.showMessageDialog(this, msg, "Download Complete",

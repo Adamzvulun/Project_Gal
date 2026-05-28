@@ -305,3 +305,124 @@ async def test_full_download_byte_identical(tmp_path):
         download._executor.shutdown(wait=False)
         await peer.stop()
         await tracker.stop()
+
+
+# ── Test 4: We serve a block to a requesting peer (the upload path) ───────
+
+@pytest.mark.asyncio
+async def test_seeder_serves_block_to_requesting_peer(tmp_path):
+    """Prove *real upload* over a live socket.
+
+    A peer connects to us, sends INTERESTED + REQUEST, and must receive the
+    exact piece bytes back. This exercises the only path that calls
+    send_piece: _on_peer_message -> _serve_block_request -> send_piece, and
+    confirms bytes_uploaded (aggregate + per-peer + upload window) all move.
+    Before this path existed the engine was download-only and silently
+    dropped every REQUEST.
+    """
+    import struct
+
+    PROTOCOL = b"BitTorrent protocol"
+    BLOCK = 16 * 1024
+
+    # One 64 KB piece of deterministic bytes.
+    payload = tmp_path / "payload.bin"
+    _write_payload(payload, PIECE_LENGTH, seed=0xFEEDFACE)
+    source = payload.read_bytes()
+
+    torrent_bytes, info_hash = make_torrent_bytes(
+        str(payload),
+        announce_url="http://127.0.0.1:1/announce",  # never contacted
+        piece_length=PIECE_LENGTH,
+    )
+    torrent_path = payload.with_suffix(".torrent")
+    torrent_path.write_bytes(torrent_bytes)
+    torrent = TorrentMetadata(torrent_path=str(torrent_path))
+
+    download_dir = tmp_path / "dl"
+    state_dir = tmp_path / "st"
+    download_dir.mkdir()
+    state_dir.mkdir()
+    download = Download(
+        torrent=torrent,
+        download_dir=str(download_dir),
+        state_dir=str(state_dir),
+        peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+    )
+    # Make us a complete seeder: load real bytes into every piece.
+    from python_engine.piece_manager import PieceStatus
+    for idx, piece in enumerate(download.piece_manager.pieces):
+        start = idx * torrent.piece_length
+        piece._data = bytearray(source[start:start + piece.length])
+        piece.status = PieceStatus.COMPLETED
+    assert download.piece_manager.is_complete
+
+    received: dict = {}
+    got_piece = asyncio.Event()
+
+    async def _send(writer, msg_id, body=b""):
+        full = bytes([msg_id]) + body
+        writer.write(struct.pack("!I", len(full)) + full)
+        await writer.drain()
+
+    async def leecher(reader, writer):
+        """A minimal peer that requests piece 0's first block from us."""
+        try:
+            await reader.readexactly(HANDSHAKE_LEN)  # our handshake
+            writer.write(
+                bytes([len(PROTOCOL)]) + PROTOCOL + b"\x00" * 8
+                + info_hash + b"-MKLEECH" + b"\x00" * 12
+            )
+            await writer.drain()
+            await _send(writer, 2)  # INTERESTED
+            await _send(writer, 6, struct.pack("!III", 0, 0, BLOCK))  # REQUEST
+            while True:
+                length = struct.unpack("!I", await reader.readexactly(4))[0]
+                if length == 0:
+                    continue
+                body = await reader.readexactly(length)
+                if body[0] == 7:  # PIECE
+                    pidx, begin = struct.unpack("!II", body[1:9])
+                    received["pidx"] = pidx
+                    received["begin"] = begin
+                    received["data"] = body[9:]
+                    got_piece.set()
+                    return
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+
+    server = await asyncio.start_server(leecher, host="127.0.0.1", port=0)
+    server_port = server.sockets[0].getsockname()[1]
+
+    conn = PeerConnection(
+        ip="127.0.0.1", port=server_port,
+        info_hash=info_hash,
+        peer_id=generate_peer_id(),
+        num_pieces=torrent.num_pieces,
+        on_message=download._on_peer_message,
+    )
+    try:
+        await conn.connect()
+        await conn.send_bitfield([True] * torrent.num_pieces)
+        # Unchoke the peer so we are willing to serve its requests.
+        conn.am_choking = False
+        await conn.start_message_loop()
+
+        await asyncio.wait_for(got_piece.wait(), timeout=5)
+
+        # The bytes that crossed the socket must match the source exactly.
+        assert received["pidx"] == 0
+        assert received["begin"] == 0
+        assert received["data"] == source[0:BLOCK]
+        # Upload accounting moved on every level.
+        assert download.stats.bytes_uploaded == BLOCK
+        assert conn.bytes_uploaded == BLOCK
+        assert conn.bytes_sent_in_window(20.0) == BLOCK
+    finally:
+        await conn.disconnect()
+        server.close()
+        try:
+            await server.wait_closed()
+        except Exception:
+            pass
+        download._executor.shutdown(wait=False)

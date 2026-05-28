@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set
 
 from . import bencode
-from .peer_connection import PeerConnection, PeerMessage, MessageType, PeerConnectionError
+from .peer_connection import PeerConnection, PeerMessage, MessageType, PeerConnectionError, BLOCK_SIZE
 from .piece_manager import PieceManager, PieceStatus, Block
 from .tracker_client import TrackerClient, Peer, TrackerResponse, generate_peer_id
 from .torrent_metadata import TorrentMetadata
@@ -426,6 +426,49 @@ class Download:
                         self._log(f"Banned peer {peer_key} (too many hash failures)")
                         await conn.disconnect()
 
+        elif message.type == MessageType.REQUEST:
+            await self._serve_block_request(conn, message)
+
+    async def _serve_block_request(self, conn: PeerConnection, message: PeerMessage):
+        """Serve a block to a peer that requested it — the upload path.
+
+        BitTorrent connections are symmetric: a peer we dialed to download
+        from can also request pieces from us on the same socket. This is the
+        only place send_piece is invoked, so it is what makes us a real
+        uploader (and what feeds the seed-mode upload sliding window).
+        """
+        # Never serve a peer we are choking — that is what choke means.
+        if conn.am_choking:
+            return
+
+        piece_idx = message.piece_index
+        begin = message.block_offset
+        length = message.block_length
+        if piece_idx is None or begin is None or length is None:
+            return
+
+        # Bounds + anti-abuse guards before touching the disk.
+        if piece_idx < 0 or piece_idx >= self.torrent.num_pieces:
+            return
+        if length <= 0 or length > BLOCK_SIZE:
+            return
+        if self.piece_manager.pieces[piece_idx].status != PieceStatus.COMPLETED:
+            return
+        if begin < 0 or begin + length > self.torrent.get_piece_length(piece_idx):
+            return
+
+        loop = asyncio.get_event_loop()
+        block = await loop.run_in_executor(
+            self._executor, self._read_block_sync, piece_idx, begin, length
+        )
+        if not block:
+            return
+        try:
+            await conn.send_piece(piece_idx, begin, block)
+            self.stats.bytes_uploaded += len(block)
+        except PeerConnectionError:
+            pass
+
     def _peer_has_needed_pieces(self, conn: PeerConnection) -> bool:
         """Check if a peer has pieces we still need."""
         for i in range(self.torrent.num_pieces):
@@ -532,6 +575,18 @@ class Download:
             and self.state in (DownloadState.COMPLETED, DownloadState.SEEDING)
         )
 
+    def _maybe_enter_seeding(self):
+        """Promote a freshly-completed download to the visible SEEDING state.
+
+        Runs once per choke tick. The completion popup and history write key
+        off the "Completed" state, which is shown for up to one choke
+        interval first; this then flips the label to "Seeding" so the GUI
+        reflects that we are serving the swarm. Idempotent.
+        """
+        if self.state == DownloadState.COMPLETED and self.piece_manager.is_complete:
+            self.state = DownloadState.SEEDING
+            self._log(f"Now seeding {self.torrent.name} — serving connected peers")
+
     async def _choke_loop(self):
         """Periodically run choke/unchoke algorithm.
 
@@ -543,6 +598,8 @@ class Download:
             await asyncio.sleep(CHOKE_INTERVAL)
             if self.state != DownloadState.RUNNING and not self._is_seeding():
                 break
+
+            self._maybe_enter_seeding()
 
             if self.peer_algorithm == AlgorithmType.TIT_FOR_TAT:
                 await self._tit_for_tat_unchoke()
@@ -711,8 +768,12 @@ class Download:
             self._rr_index = (self._rr_index + 1) % len(connected)
 
     async def _keep_alive_loop(self):
-        """Send keep-alive messages periodically."""
-        while self.state == DownloadState.RUNNING:
+        """Send keep-alive messages periodically.
+
+        Runs while downloading (RUNNING) or seeding, so connections to peers
+        we serve don't time out after the download finishes.
+        """
+        while self.state == DownloadState.RUNNING or self._is_seeding():
             await asyncio.sleep(KEEP_ALIVE_INTERVAL)
             for conn in list(self._connections.values()):
                 if conn.connected:
@@ -777,6 +838,22 @@ class Download:
         """Write a verified piece to disk (async wrapper)."""
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(self._executor, self._write_piece_sync, piece_index)
+
+    def _read_block_sync(self, piece_index: int, begin: int,
+                         length: int) -> Optional[bytes]:
+        """Read a block of a completed piece for serving — synchronous.
+
+        Completed pieces keep their bytes in memory both after a live finish
+        and after a restore (_load_state replays disk bytes into the piece),
+        so the in-memory copy is always the source of truth here.
+        """
+        data = self.piece_manager.get_piece_data(piece_index)
+        if data is None:
+            return None
+        block = data[begin:begin + length]
+        if len(block) != length:
+            return None
+        return bytes(block)
 
     async def _complete_download(self):
         """Handle download completion."""

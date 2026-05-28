@@ -830,3 +830,157 @@ class TestSeedingMode:
         # against any competitor, not its upload window.
         assert peer.bytes_received_in_window(TIT_FOR_TAT_WINDOW) == 0
         peer.send_unchoke.assert_awaited()
+
+
+class TestUploadServing:
+    """The upload path: serving block REQUESTs from connected peers.
+
+    This is what makes the client a real uploader. Before this existed,
+    send_piece was never called and bytes_uploaded stayed zero, so
+    seed-mode tit-for-tat sorted every peer by an all-zero metric.
+    """
+
+    def _make_completed_download(self, tmp_path, data=None):
+        torrent = make_torrent()  # 4 pieces x 256 bytes
+        dl = Download(
+            torrent=torrent,
+            download_dir=str(tmp_path),
+            state_dir=str(tmp_path),
+            peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+        )
+        block = data if data is not None else bytes(range(256))
+        piece = dl.piece_manager.pieces[0]
+        piece._data = bytearray(block)
+        piece.status = PieceStatus.COMPLETED
+        return dl, torrent
+
+    def _make_conn(self, torrent, *, choking):
+        from python_engine.peer_connection import PeerConnection
+        c = PeerConnection(
+            ip='10.0.0.9', port=6881,
+            info_hash=torrent.info_hash, peer_id=b'\x03' * 20,
+            num_pieces=torrent.num_pieces,
+        )
+        c._connected = True
+        c.am_choking = choking
+        c.send_message = AsyncMock()
+        return c
+
+    def _request(self, piece_index, begin, length):
+        import struct
+        from python_engine.peer_connection import PeerMessage, MessageType
+        return PeerMessage(
+            MessageType.REQUEST, struct.pack('!III', piece_index, begin, length)
+        )
+
+    @pytest.mark.asyncio
+    async def test_serves_correct_block_and_counts_upload(self, tmp_path):
+        import struct
+        from python_engine.peer_connection import MessageType
+        known = bytes((i * 7) % 256 for i in range(256))
+        dl, torrent = self._make_completed_download(tmp_path, known)
+        conn = self._make_conn(torrent, choking=False)
+
+        await dl._serve_block_request(conn, self._request(0, 0, 256))
+
+        conn.send_message.assert_awaited_once()
+        msg_type, payload = conn.send_message.await_args.args
+        assert msg_type == MessageType.PIECE
+        # PIECE payload: piece_index(4) + begin(4) + block bytes
+        assert payload == struct.pack('!II', 0, 0) + known
+        # Both per-peer and aggregate upload counters move.
+        assert conn.bytes_uploaded == 256
+        assert dl.stats.bytes_uploaded == 256
+        # The upload sliding window (seed-mode metric) was fed.
+        assert conn.bytes_sent_in_window(20.0) == 256
+
+    @pytest.mark.asyncio
+    async def test_serves_partial_block_at_offset(self, tmp_path):
+        import struct
+        known = bytes(range(256))
+        dl, torrent = self._make_completed_download(tmp_path, known)
+        conn = self._make_conn(torrent, choking=False)
+
+        await dl._serve_block_request(conn, self._request(0, 100, 50))
+
+        _, payload = conn.send_message.await_args.args
+        assert payload == struct.pack('!II', 0, 100) + known[100:150]
+        assert dl.stats.bytes_uploaded == 50
+
+    @pytest.mark.asyncio
+    async def test_choking_peer_is_not_served(self, tmp_path):
+        dl, torrent = self._make_completed_download(tmp_path)
+        conn = self._make_conn(torrent, choking=True)
+
+        await dl._serve_block_request(conn, self._request(0, 0, 256))
+
+        conn.send_message.assert_not_awaited()
+        assert dl.stats.bytes_uploaded == 0
+
+    @pytest.mark.asyncio
+    async def test_request_for_piece_we_lack_is_ignored(self, tmp_path):
+        dl, torrent = self._make_completed_download(tmp_path)
+        conn = self._make_conn(torrent, choking=False)
+        # Piece 1 is still MISSING (only piece 0 was completed).
+        await dl._serve_block_request(conn, self._request(1, 0, 256))
+        conn.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_oversized_request_rejected(self, tmp_path):
+        from python_engine.peer_connection import BLOCK_SIZE
+        dl, torrent = self._make_completed_download(tmp_path)
+        conn = self._make_conn(torrent, choking=False)
+        await dl._serve_block_request(conn, self._request(0, 0, BLOCK_SIZE + 1))
+        conn.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_out_of_bounds_request_rejected(self, tmp_path):
+        dl, torrent = self._make_completed_download(tmp_path)
+        conn = self._make_conn(torrent, choking=False)
+        # begin+length runs past the 256-byte piece.
+        await dl._serve_block_request(conn, self._request(0, 200, 100))
+        conn.send_message.assert_not_awaited()
+
+
+class TestSeedingTransition:
+    """Completion promotes the visible state COMPLETED -> SEEDING."""
+
+    def test_maybe_enter_seeding_flips_completed_to_seeding(self):
+        torrent = make_torrent()
+        dl = Download(
+            torrent=torrent, download_dir='/tmp/downloads', state_dir='/tmp/state',
+            peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+        )
+        for p in dl.piece_manager.pieces:
+            p.status = PieceStatus.COMPLETED
+        dl.state = DownloadState.COMPLETED
+
+        dl._maybe_enter_seeding()
+        assert dl.state == DownloadState.SEEDING
+        # Idempotent: a second tick keeps it SEEDING.
+        dl._maybe_enter_seeding()
+        assert dl.state == DownloadState.SEEDING
+
+    def test_maybe_enter_seeding_noop_while_running(self):
+        torrent = make_torrent()
+        dl = Download(
+            torrent=torrent, download_dir='/tmp/downloads', state_dir='/tmp/state',
+            peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+        )
+        for p in dl.piece_manager.pieces:
+            p.status = PieceStatus.COMPLETED
+        # Still RUNNING (e.g. last piece just landed but loop hasn't finished).
+        dl.state = DownloadState.RUNNING
+        dl._maybe_enter_seeding()
+        assert dl.state == DownloadState.RUNNING
+
+    def test_maybe_enter_seeding_noop_when_incomplete(self):
+        torrent = make_torrent()
+        dl = Download(
+            torrent=torrent, download_dir='/tmp/downloads', state_dir='/tmp/state',
+            peer_algorithm=AlgorithmType.TIT_FOR_TAT,
+        )
+        dl.state = DownloadState.COMPLETED  # mislabeled but pieces incomplete
+        assert dl.piece_manager.is_complete is False
+        dl._maybe_enter_seeding()
+        assert dl.state == DownloadState.COMPLETED
