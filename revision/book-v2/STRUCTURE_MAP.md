@@ -1,6 +1,6 @@
 # Document structure map — `ספר פרוייקט אדם זבולון.docx`
 
-Source: `revision/book-v2/ספר פרוייקט אדם זבולון.docx` · body children: 1601 · paragraphs: 1567 · image paragraphs: 21 · headings: 300 · section breaks: 0
+Source: `revision/book-v2/ספר פרוייקט אדם זבולון.docx` · body children: 1603 · paragraphs: 1569 · image paragraphs: 21 · headings: 300 · section breaks: 0
 
 ## Headings (TOC) — paragraph index → heading level → text
 
@@ -149,163 +149,163 @@ Source: `revision/book-v2/ספר פרוייקט אדם זבולון.docx` · bod
 | 923 | H3 |  | 15.4.2 Tit-for-Tat — חלון זמן sliding |
 | 928 | H3 |  | 15.4.3 Snubbing — זיהוי peers שהשתתקו |
 | 934 | H3 |  | 15.4.4 מצב Seeding — אלגוריתם post-completion |
-| 948 | H2 |  | 15.5 הקשרים בין היחידות השונות |
-| 954 | H2 |  | 15.6 עץ מודולים |
-| 961 | H2 |  | 15.7 Use Case Diagram |
-| 964 | H2 |  | 15.8 רשימת Use Cases |
-| 966 | H2 |  |  |
-| 969 | H2 |  | 15.9 תרשים UML -Sequence Diagram |
-| 972 | H2 | img |  |
-| 975 | H2 |  | 15.10 Design Class Diagram |
-| 997 | H2 |  | 15.11 תרשים מחלקות |
-| 1032 | H2 |  | 15.12 תיאור המחלקות המוצעות |
-| 1033 | H3 |  | TorrentMetadata |
-| 1037 | H3 |  | PieceManager (+ Piece + Block) |
-| 1041 | H3 |  | PeerConnection (+ PeerMessage + MessageType) |
-| 1045 | H3 |  | TrackerClient (+ Peer + TrackerResponse) |
-| 1049 | H3 |  | Download (המחלקה המרכזית) |
-| 1056 | H3 |  | DownloadManager |
-| 1060 | H3 |  | SecurityManager (+ PeerReputation + SecurityEvent) |
-| 1063 | H3 |  | Java GUI |
-| 1068 | H1 |  | 16. תרשים מסכים (Screen Flow Diagram) |
-| 1069 | H2 |  | רשימת המסכים |
-| 1072 | H2 |  |  |
-| 1079 | H2 |  | היררכיית המסכים והמעברים |
-| 1090 | H1 |  | 17. תיאור פרטני של כל מסך באפליקציה |
-| 1092 | H2 |  | 17.1 Main Window (S1) |
-| 1096 | H2 |  | 17.2 Select Torrent File (S2) |
-| 1099 | H2 |  | 17.3 Choose Download Location (S3) |
-| 1102 | H2 |  | 17.4 Confirm Cancel (S4) |
-| 1105 | H2 |  | 17.5 Download History (S5) |
-| 1109 | H2 |  | 17.6 Confirm Clear History (S6) |
-| 1112 | H2 |  | 17.7 Algorithm Statistics (S7) |
-| 1124 | H2 |  | 17.8 Download Complete Popup (S8) |
-| 1127 | H2 |  | 17.9 Error Popup (S9) |
-| 1131 | H1 |  | 18. תיאור אלמנטי תצוגה |
-| 1132 | H2 |  | כפתורים |
-| 1136 | H2 |  | רכיבי בחירה (JComboBox) |
-| 1147 | H2 |  | טבלת ההורדות הראשית (S1) |
-| 1152 | H2 |  | טבלת ההיסטוריה (S5) |
-| 1154 | H2 |  | רכיבי טקסט |
-| 1160 | H2 |  | גרפיקה ב-Java2D -BarChartPanel |
-| 1162 | H2 |  | רכיבי המבנה |
-| 1164 | H1 |  | 19. הודעות למשתמש |
-| 1166 | H2 |  | Popups מודאליים |
-| 1175 | H2 |  | שורת סטטוס (S1) |
-| 1182 | H2 |  | Event Log (S1) |
-| 1188 | H2 |  | תוויות גוף ב-S7 |
-| 1192 | H1 |  | 20. ממשק משתמש |
-| 1206 | H2 |  | בחירות חזותיות |
-| 1209 | H2 |  | תמיכה ב-RTL |
-| 1212 | H1 |  | 21. קוד התוכנית |
-| 1213 | H2 |  | סטנדרטים |
-| 1216 | H2 |  | 21.1 קלט |
-| 1227 | H2 |  | 21.2 פלט |
-| 1249 | H2 |  | 21.3 פונקציות עיקריות |
-| 1267 | H1 |  | 22. תיאור מסד הנתונים |
-| 1279 | H2 |  | פירוט הטבלאות |
-| 1280 | H3 |  | torrents |
-| 1293 | H3 |  | performance_stats |
-| 1296 | H3 |  | algorithm_stats |
-| 1308 | H3 |  | events |
-| 1311 | H2 |  | אין שימוש ב-Views או Stored Procedures |
-| 1313 | H2 |  | שאילתות מרכזיות |
-| 1319 | H2 |  | JSON state files |
-| 1322 | H1 |  | 23. מדריך למשתמש |
-| 1323 | H2 |  | דרישות מינימליות |
-| 1328 | H2 |  | התקנה והפעלה |
-| 1335 | H2 |  | הוספת torrent ראשון |
-| 1344 | H2 |  | פעולות שוטפות |
-| 1349 | H2 |  | פתרון בעיות |
-| 1357 | H1 |  | 24. בדיקות והערכה |
-| 1358 | H2 |  | בדיקות יחידה (Unit Tests) |
-| 1367 | H2 |  | הערכה אמפירית |
-| 1376 | H2 |  | בדיקות איכות נוספות |
-| 1382 | H1 |  | 25. מסקנות |
-| 1396 | H2 |  | 25.5 מה המערכת אינה עושה — רשימה גלויה |
-| 1408 | H1 |  | 26. פיתוחים עתידיים |
-| 1410 | H2 |  | רשת ופרוטוקול |
-| 1416 | H2 |  | אבטחה והצפנה |
-| 1420 | H2 |  | חוויית משתמש |
-| 1425 | H2 |  | ביצועים ויכולת |
-| 1429 | H2 |  | תפעול |
-| 1433 | H2 |  | סדר עדיפויות מומלץ |
-| 1436 | H1 |  | 27. ביבליוגרפיה |
-| 1437 | H2 |  | מפרטי BitTorrent (BEPs) |
-| 1444 | H2 |  | מאמרים אקדמיים |
-| 1456 | H2 |  | תיעוד טכני |
-| 1465 | H2 |  | פרויקטים פתוחים שנבחנו |
-| 1472 | H2 |  | ספרי לימוד וקורסים |
-| 1477 | H1 |  | נספח א’ – קטעי קוד מרכזיים |
-| 1479 | H2 |  | א.1 -Download._download_loop (האלגוריתם הראשי) |
-| 1482 | H2 |  |  |
-| 1483 | H2 |  |  |
+| 950 | H2 |  | 15.5 הקשרים בין היחידות השונות |
+| 956 | H2 |  | 15.6 עץ מודולים |
+| 963 | H2 |  | 15.7 Use Case Diagram |
+| 966 | H2 |  | 15.8 רשימת Use Cases |
+| 968 | H2 |  |  |
+| 971 | H2 |  | 15.9 תרשים UML -Sequence Diagram |
+| 974 | H2 | img |  |
+| 977 | H2 |  | 15.10 Design Class Diagram |
+| 999 | H2 |  | 15.11 תרשים מחלקות |
+| 1034 | H2 |  | 15.12 תיאור המחלקות המוצעות |
+| 1035 | H3 |  | TorrentMetadata |
+| 1039 | H3 |  | PieceManager (+ Piece + Block) |
+| 1043 | H3 |  | PeerConnection (+ PeerMessage + MessageType) |
+| 1047 | H3 |  | TrackerClient (+ Peer + TrackerResponse) |
+| 1051 | H3 |  | Download (המחלקה המרכזית) |
+| 1058 | H3 |  | DownloadManager |
+| 1062 | H3 |  | SecurityManager (+ PeerReputation + SecurityEvent) |
+| 1065 | H3 |  | Java GUI |
+| 1070 | H1 |  | 16. תרשים מסכים (Screen Flow Diagram) |
+| 1071 | H2 |  | רשימת המסכים |
+| 1074 | H2 |  |  |
+| 1081 | H2 |  | היררכיית המסכים והמעברים |
+| 1092 | H1 |  | 17. תיאור פרטני של כל מסך באפליקציה |
+| 1094 | H2 |  | 17.1 Main Window (S1) |
+| 1098 | H2 |  | 17.2 Select Torrent File (S2) |
+| 1101 | H2 |  | 17.3 Choose Download Location (S3) |
+| 1104 | H2 |  | 17.4 Confirm Cancel (S4) |
+| 1107 | H2 |  | 17.5 Download History (S5) |
+| 1111 | H2 |  | 17.6 Confirm Clear History (S6) |
+| 1114 | H2 |  | 17.7 Algorithm Statistics (S7) |
+| 1126 | H2 |  | 17.8 Download Complete Popup (S8) |
+| 1129 | H2 |  | 17.9 Error Popup (S9) |
+| 1133 | H1 |  | 18. תיאור אלמנטי תצוגה |
+| 1134 | H2 |  | כפתורים |
+| 1138 | H2 |  | רכיבי בחירה (JComboBox) |
+| 1149 | H2 |  | טבלת ההורדות הראשית (S1) |
+| 1154 | H2 |  | טבלת ההיסטוריה (S5) |
+| 1156 | H2 |  | רכיבי טקסט |
+| 1162 | H2 |  | גרפיקה ב-Java2D -BarChartPanel |
+| 1164 | H2 |  | רכיבי המבנה |
+| 1166 | H1 |  | 19. הודעות למשתמש |
+| 1168 | H2 |  | Popups מודאליים |
+| 1177 | H2 |  | שורת סטטוס (S1) |
+| 1184 | H2 |  | Event Log (S1) |
+| 1190 | H2 |  | תוויות גוף ב-S7 |
+| 1194 | H1 |  | 20. ממשק משתמש |
+| 1208 | H2 |  | בחירות חזותיות |
+| 1211 | H2 |  | תמיכה ב-RTL |
+| 1214 | H1 |  | 21. קוד התוכנית |
+| 1215 | H2 |  | סטנדרטים |
+| 1218 | H2 |  | 21.1 קלט |
+| 1229 | H2 |  | 21.2 פלט |
+| 1251 | H2 |  | 21.3 פונקציות עיקריות |
+| 1269 | H1 |  | 22. תיאור מסד הנתונים |
+| 1281 | H2 |  | פירוט הטבלאות |
+| 1282 | H3 |  | torrents |
+| 1295 | H3 |  | performance_stats |
+| 1298 | H3 |  | algorithm_stats |
+| 1310 | H3 |  | events |
+| 1313 | H2 |  | אין שימוש ב-Views או Stored Procedures |
+| 1315 | H2 |  | שאילתות מרכזיות |
+| 1321 | H2 |  | JSON state files |
+| 1324 | H1 |  | 23. מדריך למשתמש |
+| 1325 | H2 |  | דרישות מינימליות |
+| 1330 | H2 |  | התקנה והפעלה |
+| 1337 | H2 |  | הוספת torrent ראשון |
+| 1346 | H2 |  | פעולות שוטפות |
+| 1351 | H2 |  | פתרון בעיות |
+| 1359 | H1 |  | 24. בדיקות והערכה |
+| 1360 | H2 |  | בדיקות יחידה (Unit Tests) |
+| 1369 | H2 |  | הערכה אמפירית |
+| 1378 | H2 |  | בדיקות איכות נוספות |
+| 1384 | H1 |  | 25. מסקנות |
+| 1398 | H2 |  | 25.5 מה המערכת אינה עושה — רשימה גלויה |
+| 1410 | H1 |  | 26. פיתוחים עתידיים |
+| 1412 | H2 |  | רשת ופרוטוקול |
+| 1418 | H2 |  | אבטחה והצפנה |
+| 1422 | H2 |  | חוויית משתמש |
+| 1427 | H2 |  | ביצועים ויכולת |
+| 1431 | H2 |  | תפעול |
+| 1435 | H2 |  | סדר עדיפויות מומלץ |
+| 1438 | H1 |  | 27. ביבליוגרפיה |
+| 1439 | H2 |  | מפרטי BitTorrent (BEPs) |
+| 1446 | H2 |  | מאמרים אקדמיים |
+| 1458 | H2 |  | תיעוד טכני |
+| 1467 | H2 |  | פרויקטים פתוחים שנבחנו |
+| 1474 | H2 |  | ספרי לימוד וקורסים |
+| 1479 | H1 |  | נספח א’ – קטעי קוד מרכזיים |
+| 1481 | H2 |  | א.1 -Download._download_loop (האלגוריתם הראשי) |
 | 1484 | H2 |  |  |
 | 1485 | H2 |  |  |
 | 1486 | H2 |  |  |
 | 1487 | H2 |  |  |
-| 1491 | H2 |  | א.2 -select_piece_rarest_first (בחירת piece) |
-| 1494 | H2 |  |  |
-| 1497 | H2 |  | א.3 -_tit_for_tat_unchoke (אלגוריתם choke/unchoke) |
-| 1500 | H2 |  | א.4 -Piece.submit_block ו-Piece.verify_hash |
-| 1503 | H2 |  |  |
-| 1504 | H2 |  |  |
+| 1488 | H2 |  |  |
+| 1489 | H2 |  |  |
+| 1493 | H2 |  | א.2 -select_piece_rarest_first (בחירת piece) |
+| 1496 | H2 |  |  |
+| 1499 | H2 |  | א.3 -_tit_for_tat_unchoke (אלגוריתם choke/unchoke) |
+| 1502 | H2 |  | א.4 -Piece.submit_block ו-Piece.verify_hash |
 | 1505 | H2 |  |  |
 | 1506 | H2 |  |  |
 | 1507 | H2 |  |  |
 | 1508 | H2 |  |  |
 | 1509 | H2 |  |  |
-| 1512 | H2 |  | א.5 -_send_handshake + _receive_handshake |
-| 1515 | H2 |  |  |
-| 1516 | H2 |  | א.6 -_read_message (parsing הודעות Peer Wire Protocol) |
-| 1519 | H2 |  | א.7 -Download._on_peer_message (זרימת קבלת PIECE) |
-| 1522 | H2 |  |  |
-| 1523 | H2 |  |  |
+| 1510 | H2 |  |  |
+| 1511 | H2 |  |  |
+| 1514 | H2 |  | א.5 -_send_handshake + _receive_handshake |
+| 1517 | H2 |  |  |
+| 1518 | H2 |  | א.6 -_read_message (parsing הודעות Peer Wire Protocol) |
+| 1521 | H2 |  | א.7 -Download._on_peer_message (זרימת קבלת PIECE) |
 | 1524 | H2 |  |  |
 | 1525 | H2 |  |  |
 | 1526 | H2 |  |  |
-| 1528 | H2 |  | א.8 -PeerReputation + SecurityManager |
-| 1531 | H2 |  |  |
-| 1532 | H2 |  |  |
+| 1527 | H2 |  |  |
+| 1528 | H2 |  |  |
+| 1530 | H2 |  | א.8 -PeerReputation + SecurityManager |
 | 1533 | H2 |  |  |
-| 1536 | H2 |  | א.9 -TrackerClient.announce (תקשורת עם tracker) |
-| 1539 | H2 |  |  |
-| 1540 | H2 |  |  |
+| 1534 | H2 |  |  |
+| 1535 | H2 |  |  |
+| 1538 | H2 |  | א.9 -TrackerClient.announce (תקשורת עם tracker) |
 | 1541 | H2 |  |  |
 | 1542 | H2 |  |  |
 | 1543 | H2 |  |  |
 | 1544 | H2 |  |  |
 | 1545 | H2 |  |  |
-| 1547 | H2 |  | א.10 -TorrentMetadata._parse_metadata |
-| 1550 | H2 |  |  |
-| 1551 | H2 |  |  |
+| 1546 | H2 |  |  |
+| 1547 | H2 |  |  |
+| 1549 | H2 |  | א.10 -TorrentMetadata._parse_metadata |
 | 1552 | H2 |  |  |
 | 1553 | H2 |  |  |
 | 1554 | H2 |  |  |
 | 1555 | H2 |  |  |
 | 1556 | H2 |  |  |
-| 1559 | H2 |  | א.11 -bencode.encode ו-bencode.decode |
-| 1562 | H2 |  | א.12 -init_database (סכמת SQLite) |
-| 1565 | H2 |  |  |
-| 1566 | H2 |  |  |
+| 1557 | H2 |  |  |
+| 1558 | H2 |  |  |
+| 1561 | H2 |  | א.11 -bencode.encode ו-bencode.decode |
+| 1564 | H2 |  | א.12 -init_database (סכמת SQLite) |
 | 1567 | H2 |  |  |
 | 1568 | H2 |  |  |
 | 1569 | H2 |  |  |
 | 1570 | H2 |  |  |
 | 1571 | H2 |  |  |
 | 1572 | H2 |  |  |
-| 1576 | H2 |  | א.13 -_start_event_loop + _run_async (Async Bridge) |
-| 1579 | H2 |  | א.14 -ApiService.startDownload (Java HTTP Client) |
-| 1582 | H2 |  | א.15 -ApiService.getStatus |
-| 1585 | H2 |  |  |
-| 1586 | H2 |  |  |
+| 1573 | H2 |  |  |
+| 1574 | H2 |  |  |
+| 1578 | H2 |  | א.13 -_start_event_loop + _run_async (Async Bridge) |
+| 1581 | H2 |  | א.14 -ApiService.startDownload (Java HTTP Client) |
+| 1584 | H2 |  | א.15 -ApiService.getStatus |
 | 1587 | H2 |  |  |
 | 1588 | H2 |  |  |
 | 1589 | H2 |  |  |
 | 1590 | H2 |  |  |
 | 1591 | H2 |  |  |
-| 1594 | H2 |  | א.16 -TorrentClientGUI.startStatusUpdater + refreshStatus |
-| 1597 | H2 |  | א.17 -ProgressBarRenderer (renderer מותאם) |
+| 1592 | H2 |  |  |
+| 1593 | H2 |  |  |
+| 1596 | H2 |  | א.16 -TorrentClientGUI.startStatusUpdater + refreshStatus |
+| 1599 | H2 |  | א.17 -ProgressBarRenderer (renderer מותאם) |
 
 ## Image-bearing paragraphs (do NOT touch)
 
@@ -322,16 +322,16 @@ Source: `revision/book-v2/ספר פרוייקט אדם זבולון.docx` · bod
 | 669 |  |  |
 | 848 |  |  |
 | 855 |  |  |
-| 963 |  |  |
-| 972 | H2 |  |
-| 999 |  |  |
-| 1003 |  |  |
-| 1083 |  | מקרא לתרשים : |
-| 1095 |  |  |
-| 1108 |  |  |
-| 1118 |  |  |
-| 1122 |  |  |
-| 1270 |  |  |
+| 965 |  |  |
+| 974 | H2 |  |
+| 1001 |  |  |
+| 1005 |  |  |
+| 1085 |  | מקרא לתרשים : |
+| 1097 |  |  |
+| 1110 |  |  |
+| 1120 |  |  |
+| 1124 |  |  |
+| 1272 |  |  |
 
 ## Tables
 
@@ -357,14 +357,14 @@ Source: `revision/book-v2/ספר פרוייקט אדם זבולון.docx` · bod
 | 807 |
 | 904 |
 | 912 |
-| 965 |
-| 1071 |
-| 1133 |
-| 1149 |
-| 1168 |
-| 1282 |
-| 1295 |
-| 1298 |
-| 1310 |
-| 1360 |
-| 1371 |
+| 967 |
+| 1073 |
+| 1135 |
+| 1151 |
+| 1170 |
+| 1284 |
+| 1297 |
+| 1300 |
+| 1312 |
+| 1362 |
+| 1373 |

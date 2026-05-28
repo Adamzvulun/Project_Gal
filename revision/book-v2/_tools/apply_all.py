@@ -26,6 +26,7 @@ import edit_book_116  # noqa: E402
 import edit_book_154  # noqa: E402
 import edit_book_attribution  # noqa: E402
 import edit_book_diagrams  # noqa: E402
+import edit_upload_seeding  # noqa: E402
 # NOTE: edit_tone, edit_52, edit_62, edit_71, edit_72 are deliberately NOT
 # imported here. They targeted proposal-area indices (idx < 305) which the
 # user has declared off-limits. Their content was moved into edit_book_116
@@ -48,6 +49,7 @@ PASSES = [
     ("book §25.5 honest limitations", edit_255.apply),
     ("book §4h trim inflated claims", edit_trim.apply),
     ("book ASCII-art diagram bidi fix", edit_book_diagrams.apply),
+    ("book §15.4.4/§24/§25.5 real upload + seeding state", edit_upload_seeding.apply),
 ]
 
 
