@@ -394,6 +394,88 @@ class TestManagerRestoreState:
         )
         assert mgr.restore_state() == 0
 
+    def test_restore_state_skips_finished_downloads(self, tmp_path):
+        # A finished download (state COMPLETED) must NOT reappear after a
+        # restart, and its state files should be cleaned up.
+        download_dir = tmp_path / "dl"
+        state_dir = tmp_path / "state"
+        download_dir.mkdir()
+        state_dir.mkdir()
+
+        payload = b"\x07" * 128
+        torrent = _build_torrent_with_real_hashes(payload, "done.bin", 128)
+        (download_dir / "done.bin").write_bytes(payload)
+        dl = Download(
+            torrent=torrent,
+            download_dir=str(download_dir),
+            state_dir=str(state_dir),
+        )
+        piece = dl.piece_manager.pieces[0]
+        piece._data = bytearray(payload)
+        piece.status = PieceStatus.COMPLETED
+        for blk in piece.blocks:
+            blk.received = True
+        dl.state = DownloadState.COMPLETED
+        dl._save_state()
+        assert (state_dir / f"{dl.id}.json").exists()
+
+        mgr = DownloadManager(
+            download_dir=str(download_dir),
+            state_dir=str(state_dir),
+        )
+        assert mgr.restore_state() == 0
+        assert mgr.downloads == {}
+        # State files cleaned up; downloaded file kept.
+        assert not (state_dir / f"{dl.id}.json").exists()
+        assert not (state_dir / f"{dl.id}.torrent").exists()
+        assert (download_dir / "done.bin").exists()
+
+
+class TestManagerRemoveDownload:
+    @pytest.mark.asyncio
+    async def test_remove_download_deletes_state_keeps_file(self, tmp_path):
+        download_dir = tmp_path / "dl"
+        state_dir = tmp_path / "state"
+        download_dir.mkdir()
+        state_dir.mkdir()
+
+        payload = b"\x09" * 128
+        torrent = _build_torrent_with_real_hashes(payload, "keep.bin", 128)
+        data_file = download_dir / "keep.bin"
+        data_file.write_bytes(payload)
+
+        mgr = DownloadManager(
+            download_dir=str(download_dir),
+            state_dir=str(state_dir),
+        )
+        dl = Download(
+            torrent=torrent,
+            download_dir=str(download_dir),
+            state_dir=str(state_dir),
+        )
+        dl.state = DownloadState.PAUSED
+        dl._save_state()
+        mgr.downloads[dl.id] = dl
+        assert (state_dir / f"{dl.id}.json").exists()
+
+        removed = await mgr.remove_download(dl.id)
+
+        assert removed is True
+        assert dl.id not in mgr.downloads
+        assert not (state_dir / f"{dl.id}.json").exists()
+        assert not (state_dir / f"{dl.id}.torrent").exists()
+        # The downloaded file on disk is untouched.
+        assert data_file.exists()
+        assert data_file.read_bytes() == payload
+
+    @pytest.mark.asyncio
+    async def test_remove_unknown_download_returns_false(self, tmp_path):
+        mgr = DownloadManager(
+            download_dir=str(tmp_path / "dl"),
+            state_dir=str(tmp_path / "state"),
+        )
+        assert await mgr.remove_download("does-not-exist") is False
+
 
 class TestTitForTatSlidingWindow:
     """Verify _tit_for_tat_unchoke ranks peers by sliding-window contribution.

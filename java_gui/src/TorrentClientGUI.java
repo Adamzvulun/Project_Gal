@@ -53,6 +53,7 @@ public class TorrentClientGUI extends JFrame {
     private JButton pauseButton;
     private JButton resumeButton;
     private JButton cancelButton;
+    private JButton deleteButton;
 
     // Algorithm selection combos
     private JComboBox<String> pieceAlgorithmCombo;
@@ -174,6 +175,13 @@ public class TorrentClientGUI extends JFrame {
         cancelButton.setEnabled(false);
         cancelButton.addActionListener(this::onCancel);
         toolbar.add(cancelButton);
+
+        // Delete button (removes the row from the list; keeps the file on disk)
+        deleteButton = new JButton("Delete");
+        deleteButton.setToolTipText("Remove selected download from the list (keeps the downloaded file)");
+        deleteButton.setEnabled(false);
+        deleteButton.addActionListener(this::onDelete);
+        toolbar.add(deleteButton);
 
         toolbar.addSeparator();
 
@@ -333,6 +341,31 @@ public class TorrentClientGUI extends JFrame {
                 SwingUtilities.invokeLater(this::refreshStatus);
             } catch (Exception ex) {
                 log("ERROR: Failed to cancel: " + ex.getMessage());
+            }
+        }).start();
+    }
+
+    private void onDelete(ActionEvent e) {
+        String id = getSelectedTorrentId();
+        if (id == null) return;
+
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "Remove this download from the list?\n"
+                        + "The downloaded file on disk will be kept.",
+                "Confirm Delete", JOptionPane.YES_NO_OPTION);
+        if (confirm != JOptionPane.YES_OPTION) return;
+
+        new Thread(() -> {
+            try {
+                apiService.delete(id);
+                // Forget tracked state so a removed-then-readded id can't
+                // resurface a stale completion popup or log cursor.
+                previousStates.remove(id);
+                logSeqTracker.remove(id);
+                log("Removed download from list: " + id);
+                SwingUtilities.invokeLater(this::refreshStatus);
+            } catch (Exception ex) {
+                log("ERROR: Failed to delete: " + ex.getMessage());
             }
         }).start();
     }
@@ -536,6 +569,7 @@ public class TorrentClientGUI extends JFrame {
             pauseButton.setEnabled(false);
             resumeButton.setEnabled(false);
             cancelButton.setEnabled(false);
+            deleteButton.setEnabled(false);
             return;
         }
 
@@ -543,6 +577,8 @@ public class TorrentClientGUI extends JFrame {
         pauseButton.setEnabled("Running".equals(state));
         resumeButton.setEnabled("Paused".equals(state));
         cancelButton.setEnabled("Running".equals(state) || "Paused".equals(state));
+        // Delete works for any selected row — it stops the download first if needed.
+        deleteButton.setEnabled(true);
     }
 
     private String getSelectedTorrentId() {

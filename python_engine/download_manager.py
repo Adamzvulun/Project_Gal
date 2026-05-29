@@ -1213,6 +1213,46 @@ class DownloadManager:
         if download_id in self.downloads:
             await self.downloads[download_id].cancel()
 
+    async def remove_download(self, download_id: str) -> bool:
+        """Remove a download from the manager and delete its persisted state.
+
+        Stops any live network activity first, drops the download from the
+        in-memory table, and deletes its `{id}.json` + `{id}.torrent` state
+        files so it does not reappear on the next poll or after a restart.
+        The downloaded file on disk is left untouched — this only removes the
+        entry from the list.
+
+        Returns True if a download was removed, False if the id was unknown.
+        """
+        download = self.downloads.pop(download_id, None)
+        if download is None:
+            return False
+
+        # Stop the network loop / seeding before discarding the object.
+        if download.state in (DownloadState.RUNNING, DownloadState.SEEDING):
+            try:
+                await download.cancel()
+            except Exception as e:
+                logger.warning(f"[{download_id}] error while stopping before remove: {e}")
+
+        # cancel() re-saves state, so delete the files only after stopping.
+        self._delete_state_files(download_id)
+        return True
+
+    def _delete_state_files(self, download_id: str):
+        """Delete the persisted JSON + sidecar .torrent for a download id.
+
+        Never raises; a missing file is fine. Does not touch downloaded data.
+        """
+        for suffix in (".json", ".torrent"):
+            path = os.path.join(self.state_dir, f"{download_id}{suffix}")
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                logger.warning(f"[{download_id}] failed to delete state file {path}: {e}")
+
     def get_all_status(self) -> List[dict]:
         """Get status of all downloads."""
         return [d.get_status() for d in self.downloads.values()]
@@ -1230,9 +1270,13 @@ class DownloadManager:
     def restore_state(self) -> int:
         """Scan state_dir for `*.json` and reconstruct paused Downloads.
 
-        Each restored download lands in `self.downloads` in PAUSED state
-        (or COMPLETED if it finished before the crash). The user explicitly
-        resumes via the API; we do not auto-start the network loop.
+        Each restored download lands in `self.downloads` in PAUSED state so
+        the user can resume it; we do not auto-start the network loop.
+
+        Downloads that had already finished (saved state COMPLETED/SEEDING)
+        are intentionally NOT restored — a finished download should not
+        reappear in the list after the app is reopened. Their state files are
+        deleted so the list starts clean; the downloaded file on disk is kept.
 
         Returns the number of downloads successfully restored.
         """
@@ -1247,6 +1291,10 @@ class DownloadManager:
                 download_dir_override=self.download_dir,
             )
             if dl is None:
+                continue
+            if dl.state in (DownloadState.COMPLETED, DownloadState.SEEDING):
+                # Finished before close — drop it so it doesn't show up again.
+                self._delete_state_files(dl.id)
                 continue
             if dl.id in self.downloads:
                 logger.warning(f"Duplicate download id {dl.id} during restore; skipping")

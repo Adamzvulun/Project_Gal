@@ -262,6 +262,27 @@ public class ApiService {
     }
 
     /**
+     * Remove a download from the list.
+     *
+     * Stops it if still active and deletes its server-side state, but keeps
+     * the downloaded file on disk. After this the torrent no longer appears
+     * in the status list.
+     *
+     * @param torrentId The torrent ID to remove.
+     * @throws IOException  If there is a network error.
+     * @throws ApiException If the server returns an error.
+     */
+    public void delete(String torrentId) throws IOException, ApiException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/torrents/" + torrentId))
+                .DELETE()
+                .build();
+
+        HttpResponse<String> response = sendRequest(request);
+        checkResponse(response, 200);
+    }
+
+    /**
      * Get download history from the server.
      *
      * @return JSON string of download history.

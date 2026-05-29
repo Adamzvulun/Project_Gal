@@ -375,6 +375,24 @@ def cancel_download(torrent_id: str):
     return jsonify({"id": torrent_id, "state": "Cancelled"})
 
 
+@app.route('/torrents/<torrent_id>', methods=['DELETE'])
+def delete_download(torrent_id: str):
+    """Remove a download from the list.
+
+    Stops it if it is still active, then drops it from the manager and
+    deletes its persisted state files. The downloaded file on disk is kept —
+    this only removes the entry from the GUI list.
+    """
+    manager = get_manager()
+    if manager.get_download(torrent_id) is None:
+        return jsonify({"error": "Torrent not found"}), 404
+
+    removed = _run_async(manager.remove_download(torrent_id))
+    log_event_to_db(torrent_id, "download_removed", "Removed from list")
+
+    return jsonify({"id": torrent_id, "removed": bool(removed)})
+
+
 # ── History & Stats Endpoints ──
 
 @app.route('/history', methods=['GET'])
