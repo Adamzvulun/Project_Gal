@@ -112,26 +112,9 @@ Full blue divider.
 Header kicker: 09 · ארכיטקטורה · מבט-על
 Title: שני תהליכים, גשר REST, ומסד נתונים מקומי
 
-DIAGRAM - render this Mermaid (source: docs/Fig-02.md, level 1; already
-white/clean - keep it as the main visual of the slide):
-
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FFFFFF', 'primaryColor':'#FFFFFF', 'primaryBorderColor':'#000000', 'primaryTextColor':'#000000', 'lineColor':'#000000', 'edgeLabelBackground':'#FFFFFF', 'tertiaryColor':'#FFFFFF'}}}%%
-flowchart LR
-    GUI["Java GUI<br/>(Swing • JFrame)"]
-    ENG["Python Engine<br/>(asyncio • Flask)"]
-    TRK[("Tracker<br/>external")]
-    PEERS[("Peers 1..N<br/>swarm")]
-
-    GUI <-->|"HTTP / REST<br/>localhost:5000"| ENG
-    ENG <-->|"HTTP / HTTPS<br/>announce"| TRK
-    ENG <-->|"TCP / BEP-3<br/>peer-wire protocol"| PEERS
-
-    classDef proc fill:#FFFFFF,stroke:#1A73E8,stroke-width:2px,color:#000;
-    classDef ext  fill:#FFFFFF,stroke:#E37400,stroke-width:2px,color:#000;
-    class GUI,ENG proc;
-    class TRK,PEERS ext;
-```
+`[[DIAGRAM: architecture]]`
+Caption: תרשים ארכיטקטורה - Java GUI ⇄ Python Engine (REST), וה-Engine מול Tracker (HTTP) ומול Peers (TCP/BEP-3).
+Note to Adam: render docs/Fig-02.md (רמה 1 - Top Level) at https://mermaid.live and paste the PNG/SVG here. It is the main visual of the slide.
 
 Caption / talking points (small, under the diagram):
 - מסגרת כחולה = רכיב פנימי (Java GUI, Python Engine); מסגרת כתומה = חיצוני (Tracker, Peers).
@@ -266,47 +249,9 @@ handshake = (
 Header kicker: 19 · קבלת PIECE · UML SEQUENCE
 Title: זרימת הודעת PIECE - קבלה, אימות SHA-1, ו-ban
 
-DIAGRAM - render this Mermaid (source: docs/Fig-05.md; UML sequence diagram,
-already white/clean - this is the main visual of the slide):
-
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FFFFFF', 'primaryColor':'#FFFFFF', 'primaryBorderColor':'#000000', 'primaryTextColor':'#000000', 'lineColor':'#000000', 'actorBkg':'#FFFFFF', 'actorBorder':'#000000', 'actorTextColor':'#000000', 'signalColor':'#000000', 'signalTextColor':'#000000', 'noteBkgColor':'#FFFFFF', 'noteBorderColor':'#888888', 'noteTextColor':'#000000', 'activationBkgColor':'#F2F2F2', 'activationBorderColor':'#000000', 'sequenceNumberColor':'#FFFFFF', 'labelBoxBkgColor':'#FFFFFF', 'labelBoxBorderColor':'#000000', 'labelTextColor':'#000000', 'altSectionBkgColor':'#FFFFFF'}}}%%
-sequenceDiagram
-    autonumber
-    participant P  as Peer
-    participant PC as PeerConnection
-    participant DL as Download
-    participant PM as PieceManager
-    participant SM as SecurityManager
-    participant TP as ThreadPoolExecutor
-
-    P  ->>+ PC: PIECE message (TCP)
-    PC ->> PC: _read_message<br/>(length + payload)
-    PC ->> PC: _handle_message<br/>(bytes_downloaded += data_len)
-    PC ->>+ DL: on_message
-    DL ->>+ PM: submit_block(piece_idx, offset, data)
-    PM -->>- DL: is_complete : bool
-
-    alt piece complete
-        DL ->>+ TP: run_in_executor(verify_piece)
-        TP -->>- DL: verified : bool
-        alt verified == True
-            DL ->> SM: report_successful_piece
-            DL ->>+ TP: run_in_executor(write_piece)
-            TP -->>- DL: done
-            DL ->> PC: broadcast HAVE to all peers
-        else verified == False (HASH FAILED)
-            DL ->>+ SM: report_hash_failure
-            SM -->>- DL: banned : bool
-            opt banned == True
-                DL ->> PC: disconnect()
-            end
-        end
-    end
-
-    DL -->>- PC: return
-    PC -->>- P: (continue reading next message)
-```
+`[[DIAGRAM: piece-sequence]]`
+Caption: Sequence Diagram (UML) - זרימת הודעת PIECE: קבלה ב-PeerConnection, submit_block ב-PieceManager, אימות SHA-1 ב-ThreadPoolExecutor, ואז HAVE לכולם או ban אחרי כשל.
+Note to Adam: render docs/Fig-05.md at https://mermaid.live and paste the PNG/SVG here (sequence diagrams יוצאים רחבים - שקול עמוד landscape). זה הוויזואל המרכזי של השקופית.
 
 Caption / talking points (small, under the diagram):
 - PIECE היא ההודעה היחידה ב-BEP-3 שנושאת נתוני קובץ.

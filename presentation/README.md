@@ -12,8 +12,9 @@ re-derived.
 2. Transcribe each slide as written. Keep the wording. Do **not** invent extra
    claims, numbers, or slides, and do not "improve" the facts. If something is
    unclear, leave it as written rather than guessing.
-3. Where a slide says `[[SCREENSHOT: ...]]`, place an empty image frame with the
-   caption already filled in, so the student only drops a PNG in later.
+3. Where a slide says `[[SCREENSHOT: ...]]` or `[[DIAGRAM: ...]]`, place an
+   empty image frame with the caption already filled in, so the student only
+   drops a PNG/SVG in later. Do not redraw these - they are pasted images.
 
 ## Hard rules
 
@@ -50,11 +51,18 @@ Capture these from the running app (build the Java GUI first so the new
    General tab. Goes on `[[SCREENSHOT: algorithm-stats]]`.
 3. (Optional) **History** dialog. Goes on `[[SCREENSHOT: history]]` if used.
 
+Two diagrams to render and paste (from the repo's Mermaid sources, via
+https://mermaid.live - export PNG/SVG on a white background):
+- **Architecture** - render `docs/Fig-02.md` (level 1). Goes on
+  `[[DIAGRAM: architecture]]` (slide 9).
+- **PIECE sequence (UML)** - render `docs/Fig-05.md`. Goes on
+  `[[DIAGRAM: piece-sequence]]` (slide 19).
+
 ## Deck shape
 
 ~49 slides: a ~25-slide spoken walkthrough (3 parts, ~20 min) + an appendix
 that answers all 17 of the teacher's prep questions (10 depth + 7 code, on
 slides 36-49) for quick jump-to during the defense. Six core critiques are
-also woven into the main flow as "ביקורת עמוקה" slides. Two diagrams are
-embedded as Mermaid for you to render: the architecture diagram (slide 9) and
-a UML PIECE sequence diagram (slide 19).
+also woven into the main flow as "ביקורת עמוקה" slides. Two diagrams have paste
+placeholders (rendered by the student from the repo's Mermaid sources): the
+architecture diagram (slide 9) and a UML PIECE sequence diagram (slide 19).
