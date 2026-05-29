@@ -430,6 +430,33 @@ class TestManagerRestoreState:
         assert not (state_dir / f"{dl.id}.torrent").exists()
         assert (download_dir / "done.bin").exists()
 
+    def test_restore_state_skips_cancelled_downloads(self, tmp_path):
+        # A cancelled download must not reappear after a restart either.
+        download_dir = tmp_path / "dl"
+        state_dir = tmp_path / "state"
+        download_dir.mkdir()
+        state_dir.mkdir()
+
+        payload = b"\x05" * 128
+        torrent = _build_torrent_with_real_hashes(payload, "gone.bin", 128)
+        dl = Download(
+            torrent=torrent,
+            download_dir=str(download_dir),
+            state_dir=str(state_dir),
+        )
+        dl.state = DownloadState.CANCELLED
+        dl._save_state()
+        assert (state_dir / f"{dl.id}.json").exists()
+
+        mgr = DownloadManager(
+            download_dir=str(download_dir),
+            state_dir=str(state_dir),
+        )
+        assert mgr.restore_state() == 0
+        assert mgr.downloads == {}
+        assert not (state_dir / f"{dl.id}.json").exists()
+        assert not (state_dir / f"{dl.id}.torrent").exists()
+
 
 class TestManagerRemoveDownload:
     @pytest.mark.asyncio

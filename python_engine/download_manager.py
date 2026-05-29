@@ -1121,12 +1121,16 @@ class Download:
                 )
                 piece.reset()
 
-        # State policy: force PAUSED unless the saved state was COMPLETED.
+        # State policy: preserve terminal states (COMPLETED/SEEDING/CANCELLED)
+        # so callers can recognise a finished/cancelled download; everything
+        # in-progress is forced to PAUSED (we never auto-resume the loop).
         saved_state = data.get("state")
-        if saved_state == DownloadState.COMPLETED.value:
-            dl.state = DownloadState.COMPLETED
-        else:
-            dl.state = DownloadState.PAUSED
+        terminal = {
+            DownloadState.COMPLETED.value: DownloadState.COMPLETED,
+            DownloadState.SEEDING.value: DownloadState.SEEDING,
+            DownloadState.CANCELLED.value: DownloadState.CANCELLED,
+        }
+        dl.state = terminal.get(saved_state, DownloadState.PAUSED)
 
         return dl
 
@@ -1273,10 +1277,11 @@ class DownloadManager:
         Each restored download lands in `self.downloads` in PAUSED state so
         the user can resume it; we do not auto-start the network loop.
 
-        Downloads that had already finished (saved state COMPLETED/SEEDING)
-        are intentionally NOT restored — a finished download should not
-        reappear in the list after the app is reopened. Their state files are
-        deleted so the list starts clean; the downloaded file on disk is kept.
+        Downloads that are no longer in progress (saved state COMPLETED,
+        SEEDING, or CANCELLED) are intentionally NOT restored — a finished or
+        cancelled download should not reappear in the list after the app is
+        reopened. Their state files are deleted so the list starts clean; the
+        downloaded file on disk is kept.
 
         Returns the number of downloads successfully restored.
         """
@@ -1292,8 +1297,10 @@ class DownloadManager:
             )
             if dl is None:
                 continue
-            if dl.state in (DownloadState.COMPLETED, DownloadState.SEEDING):
-                # Finished before close — drop it so it doesn't show up again.
+            if dl.state in (DownloadState.COMPLETED, DownloadState.SEEDING,
+                            DownloadState.CANCELLED):
+                # Finished or cancelled before close — drop it so it doesn't
+                # show up again.
                 self._delete_state_files(dl.id)
                 continue
             if dl.id in self.downloads:
