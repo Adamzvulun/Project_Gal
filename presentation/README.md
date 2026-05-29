@@ -52,7 +52,9 @@ Capture these from the running app (build the Java GUI first so the new
 
 ## Deck shape
 
-~48 slides: a ~24-slide spoken walkthrough (3 parts, ~20 min) + an appendix
-that answers all 17 of the teacher's prep questions (10 depth + 7 code) for
-quick jump-to during the defense. Six core critiques are also woven into the
-main flow as "ביקורת עמוקה" slides.
+~49 slides: a ~25-slide spoken walkthrough (3 parts, ~20 min) + an appendix
+that answers all 17 of the teacher's prep questions (10 depth + 7 code, on
+slides 36-49) for quick jump-to during the defense. Six core critiques are
+also woven into the main flow as "ביקורת עמוקה" slides. Two diagrams are
+embedded as Mermaid for you to render: the architecture diagram (slide 9) and
+a UML PIECE sequence diagram (slide 19).

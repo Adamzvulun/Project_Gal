@@ -112,13 +112,31 @@ Full blue divider.
 Header kicker: 09 · ארכיטקטורה · מבט-על
 Title: שני תהליכים, גשר REST, ומסד נתונים מקומי
 
-Diagram boxes (left to right / RTL):
-- CLIENT · JVM - Java Swing GUI (JFrame · JTable · polling כל 500ms)
-- גשר: REST/JSON על 127.0.0.1:5000 - 14 endpoints
-- APPLICATION SERVER - Python Engine (Flask + asyncio + ThreadPoolExecutor)
-- DB · מקומי - SQLite (history · stats · events)
-- EXTERNAL · TRACKER - HTTP (announce · compact peer list)
-- EXTERNAL · SWARM - peers (TCP, Peer Wire Protocol)
+DIAGRAM - render this Mermaid (source: docs/Fig-02.md, level 1; already
+white/clean - keep it as the main visual of the slide):
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FFFFFF', 'primaryColor':'#FFFFFF', 'primaryBorderColor':'#000000', 'primaryTextColor':'#000000', 'lineColor':'#000000', 'edgeLabelBackground':'#FFFFFF', 'tertiaryColor':'#FFFFFF'}}}%%
+flowchart LR
+    GUI["Java GUI<br/>(Swing • JFrame)"]
+    ENG["Python Engine<br/>(asyncio • Flask)"]
+    TRK[("Tracker<br/>external")]
+    PEERS[("Peers 1..N<br/>swarm")]
+
+    GUI <-->|"HTTP / REST<br/>localhost:5000"| ENG
+    ENG <-->|"HTTP / HTTPS<br/>announce"| TRK
+    ENG <-->|"TCP / BEP-3<br/>peer-wire protocol"| PEERS
+
+    classDef proc fill:#FFFFFF,stroke:#1A73E8,stroke-width:2px,color:#000;
+    classDef ext  fill:#FFFFFF,stroke:#E37400,stroke-width:2px,color:#000;
+    class GUI,ENG proc;
+    class TRK,PEERS ext;
+```
+
+Caption / talking points (small, under the diagram):
+- מסגרת כחולה = רכיב פנימי (Java GUI, Python Engine); מסגרת כתומה = חיצוני (Tracker, Peers).
+- הגשר GUI<->Engine: REST/JSON על 127.0.0.1:5000 (14 endpoints, polling כל 500ms). אין חשיפה לרשת חיצונית.
+- ה-Engine מדבר עם ה-tracker ב-HTTP ועם ה-peers ב-TCP/BEP-3. מסד נתונים מקומי: SQLite (history, stats, events) בצד ה-Engine.
 
 ---
 
@@ -244,8 +262,61 @@ handshake = (
 
 ---
 
-### Slide 19 - ביקורת עמוקה · תרגיל 3
-Header kicker: 19 · ביקורת עמוקה · תרגיל 3
+### Slide 19 - קבלת PIECE · Sequence Diagram (UML)
+Header kicker: 19 · קבלת PIECE · UML SEQUENCE
+Title: זרימת הודעת PIECE - קבלה, אימות SHA-1, ו-ban
+
+DIAGRAM - render this Mermaid (source: docs/Fig-05.md; UML sequence diagram,
+already white/clean - this is the main visual of the slide):
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FFFFFF', 'primaryColor':'#FFFFFF', 'primaryBorderColor':'#000000', 'primaryTextColor':'#000000', 'lineColor':'#000000', 'actorBkg':'#FFFFFF', 'actorBorder':'#000000', 'actorTextColor':'#000000', 'signalColor':'#000000', 'signalTextColor':'#000000', 'noteBkgColor':'#FFFFFF', 'noteBorderColor':'#888888', 'noteTextColor':'#000000', 'activationBkgColor':'#F2F2F2', 'activationBorderColor':'#000000', 'sequenceNumberColor':'#FFFFFF', 'labelBoxBkgColor':'#FFFFFF', 'labelBoxBorderColor':'#000000', 'labelTextColor':'#000000', 'altSectionBkgColor':'#FFFFFF'}}}%%
+sequenceDiagram
+    autonumber
+    participant P  as Peer
+    participant PC as PeerConnection
+    participant DL as Download
+    participant PM as PieceManager
+    participant SM as SecurityManager
+    participant TP as ThreadPoolExecutor
+
+    P  ->>+ PC: PIECE message (TCP)
+    PC ->> PC: _read_message<br/>(length + payload)
+    PC ->> PC: _handle_message<br/>(bytes_downloaded += data_len)
+    PC ->>+ DL: on_message
+    DL ->>+ PM: submit_block(piece_idx, offset, data)
+    PM -->>- DL: is_complete : bool
+
+    alt piece complete
+        DL ->>+ TP: run_in_executor(verify_piece)
+        TP -->>- DL: verified : bool
+        alt verified == True
+            DL ->> SM: report_successful_piece
+            DL ->>+ TP: run_in_executor(write_piece)
+            TP -->>- DL: done
+            DL ->> PC: broadcast HAVE to all peers
+        else verified == False (HASH FAILED)
+            DL ->>+ SM: report_hash_failure
+            SM -->>- DL: banned : bool
+            opt banned == True
+                DL ->> PC: disconnect()
+            end
+        end
+    end
+
+    DL -->>- PC: return
+    PC -->>- P: (continue reading next message)
+```
+
+Caption / talking points (small, under the diagram):
+- PIECE היא ההודעה היחידה ב-BEP-3 שנושאת נתוני קובץ.
+- אחרי שכל ה-blocks הגיעו (submit_block מחזיר is_complete), אימות ה-SHA-1 והכתיבה לדיסק רצים ב-ThreadPoolExecutor כדי לא לחסום את ה-event loop.
+- piece שעבר אימות -> broadcast של HAVE לכל ה-peers. piece שנכשל -> report_hash_failure, ו-ban אחרי 3 כשלים.
+
+---
+
+### Slide 20 - ביקורת עמוקה · תרגיל 3
+Header kicker: 20 · ביקורת עמוקה · תרגיל 3
 Title: TCP הוא stream ולא message - וזה יוצר מורכבות עצומה
 
 - Stream != Messages - TCP מבטיח סדר ובלי אובדן, אבל לא גבולות הודעה. recv(1024) עלול להחזיר חצי הודעה + שליש מהבאה.
@@ -256,8 +327,8 @@ Title: TCP הוא stream ולא message - וזה יוצר מורכבות עצו�
 
 ---
 
-### Slide 20 - העלאה ומצב Seeding
-Header kicker: 20 · העלאה · SEEDING
+### Slide 21 - העלאה ומצב Seeding
+Header kicker: 21 · העלאה · SEEDING
 Title: הלקוח גם מעלה - לא רק מוריד (נקודת כאב אמיתית)
 
 - חיבור TCP דו-כיווני: גם אם אני יזמתי את החיבור כדי להוריד, ה-peer יכול לשלוח לי REQUEST על אותו socket.
@@ -268,8 +339,8 @@ Title: הלקוח גם מעלה - לא רק מוריד (נקודת כאב אמי
 
 ---
 
-### Slide 21 - אימות שלמות
-Header kicker: 21 · אימות שלמות
+### Slide 22 - אימות שלמות
+Header kicker: 22 · אימות שלמות
 Title: SHA-1 על כל piece - לפני שמילה אחת נכתבת לדיסק
 
 - שימוש 1 · info_hash - SHA-1 על ה-info dict ב-bencode = מזהה גלובלי של ה-torrent, משמש ב-handshake מול tracker ומול peers.
@@ -285,8 +356,8 @@ def verify_hash(self) -> bool:
 
 ---
 
-### Slide 22 - ביקורת עמוקה · תרגיל 4
-Header kicker: 22 · ביקורת עמוקה · תרגיל 4
+### Slide 23 - ביקורת עמוקה · תרגיל 4
+Header kicker: 23 · ביקורת עמוקה · תרגיל 4
 Title: SHA-1 - SWOT וגבולות ההגנה בעידן ה-collision attacks
 
 - Strengths - מהיר, קצר (20 בתים), תאימות מלאה ל-BEP-3, מגן מ-corruption אקראי.
@@ -297,8 +368,8 @@ Title: SHA-1 - SWOT וגבולות ההגנה בעידן ה-collision attacks
 
 ---
 
-### Slide 23 - אבטחה · הגנה בעומק + Sybil
-Header kicker: 23 · אבטחה · DEFENSE-IN-DEPTH
+### Slide 24 - אבטחה · הגנה בעומק + Sybil
+Header kicker: 24 · אבטחה · DEFENSE-IN-DEPTH
 Title: שכבות הגנה זולות - ולמה מוניטין לא פותר Sybil (תרגיל 5)
 
 שכבות הגנה:
@@ -314,8 +385,8 @@ Title: שכבות הגנה זולות - ולמה מוניטין לא פותר Sy
 
 ---
 
-### Slide 24 - קונקורנציה · הגשר
-Header kicker: 24 · קונקורנציה · הגשר
+### Slide 25 - קונקורנציה · הגשר
+Header kicker: 25 · קונקורנציה · הגשר
 Title: איך Flask סינכרוני מדבר עם asyncio - וההסתייגות (תרגיל 6)
 
 - Flask workers (threaded) - מטפלים בבקשות REST במקביל.
@@ -334,7 +405,7 @@ Title: איך Flask סינכרוני מדבר עם asyncio - וההסתייגו�
 
 ---
 
-### Slide 25 - Divider C
+### Slide 26 - Divider C
 Full blue divider.
 - אות גדולה: C
 - חלק ג - תוצאות, ממשק, ומסקנות
@@ -342,8 +413,8 @@ Full blue divider.
 
 ---
 
-### Slide 26 - שמירה ושחזור מצב
-Header kicker: 26 · שמירה ושחזור מצב
+### Slide 27 - שמירה ושחזור מצב
+Header kicker: 27 · שמירה ושחזור מצב
 Title: Resume שעובד - ושליטה ברשימת ההורדות
 
 - שמירת מצב: כל הורדה נשמרת ל-data/state/<id>.json + sidecar .torrent (כתיבה אטומית write-then-rename).
@@ -354,8 +425,8 @@ Title: Resume שעובד - ושליטה ברשימת ההורדות
 
 ---
 
-### Slide 27 - הערכה אמפירית
-Header kicker: 27 · הערכה אמפירית
+### Slide 28 - הערכה אמפירית
+Header kicker: 28 · הערכה אמפירית
 Title: Rarest-First מול Random - ניסוי משוחזר
 
 - הקמה: swarm סינתטי על loopback. קובץ 1MB (16 pieces × 64KB), tracker מינימלי, ו-4 mock peers. 5 הרצות לכל אלגוריתם (10 בסך הכול). ה-CSVs מחויבים ב-data/experiments/.
@@ -375,8 +446,8 @@ Title: Rarest-First מול Random - ניסוי משוחזר
 
 ---
 
-### Slide 28 - ממשק · המסך הראשי
-Header kicker: 28 · ממשק משתמש · המסך הראשי
+### Slide 29 - ממשק · המסך הראשי
+Header kicker: 29 · ממשק משתמש · המסך הראשי
 Title: Main Window - הציר של האפליקציה
 
 `[[SCREENSHOT: main-window]]`
@@ -386,8 +457,8 @@ Note to Adam: צלם בזמן הורדה פעילה, אם אפשר עם שורה
 
 ---
 
-### Slide 29 - ממשק · חלון הסטטיסטיקה
-Header kicker: 29 · ממשק משתמש · סטטיסטיקה
+### Slide 30 - ממשק · חלון הסטטיסטיקה
+Header kicker: 30 · ממשק משתמש · סטטיסטיקה
 Title: Algorithm Statistics - השוואה אמפירית בין הריצות
 
 `[[SCREENSHOT: algorithm-stats]]`
@@ -395,8 +466,8 @@ Caption: חלון Algorithm Statistics - bar chart של בחירות rarest-firs
 
 ---
 
-### Slide 30 - בדיקות והערכה
-Header kicker: 30 · בדיקות
+### Slide 31 - בדיקות והערכה
+Header kicker: 31 · בדיקות
 Title: 226 בדיקות · 9 קבצים · כולל בדיקת E2E על socket אמיתי
 
 Table:
@@ -417,8 +488,8 @@ Table:
 
 ---
 
-### Slide 31 - מסקנות מרכזיות
-Header kicker: 31 · מסקנות
+### Slide 32 - מסקנות מרכזיות
+Header kicker: 32 · מסקנות
 Title: מה למדתי מהפרויקט
 
 - Rarest-first שווה את עלותו הזניחה - אותו O(N) כמו random, אבל איכות הרבה יותר טובה לבריאות ה-swarm.
@@ -429,8 +500,8 @@ Title: מה למדתי מהפרויקט
 
 ---
 
-### Slide 32 - מגבלות ופיתוחים עתידיים
-Header kicker: 32 · מגבלות ופיתוחים עתידיים
+### Slide 33 - מגבלות ופיתוחים עתידיים
+Header kicker: 33 · מגבלות ופיתוחים עתידיים
 Title: מה לא נכלל - בכוונה ובכנות
 
 - אין קבלת חיבורים נכנסים / NAT traversal - מעלים ל-peers מחוברים (חיבורים יוצאים), אבל אין start_server לחיבורים חדשים.
@@ -443,7 +514,7 @@ Title: מה לא נכלל - בכוונה ובכנות
 
 ---
 
-### Slide 33 - תודה / שאלות
+### Slide 34 - תודה / שאלות
 Layout: closing slide.
 Title: תודה · שאלות?
 
@@ -457,7 +528,7 @@ Title: תודה · שאלות?
 
 ---
 
-### Slide 34 - Divider Q
+### Slide 35 - Divider Q
 Full blue divider.
 - אות גדולה: Q
 - נספח · שאלות הכנה
@@ -465,8 +536,8 @@ Full blue divider.
 
 ---
 
-### Slide 35 - שאלת עומק 1 · RAREST-FIRST
-Header kicker: 35 · שאלת עומק 1
+### Slide 36 - שאלת עומק 1 · RAREST-FIRST
+Header kicker: 36 · שאלת עומק 1
 Title: למה Rarest-First הוא הרבה יותר מ"בחירת החלק הנדיר"
 
 שאלה: מדוע rarest-first הוא בעצם בעיית optimization גלובלית? איך rarity distribution משפיעה על survivability? למה local view מטעה? איך simultaneous rare-piece requests יוצרים contention? למה randomization הכרחי?
@@ -479,8 +550,8 @@ Title: למה Rarest-First הוא הרבה יותר מ"בחירת החלק הנ�
 
 ---
 
-### Slide 36 - שאלת עומק 2 · TIT-FOR-TAT
-Header kicker: 36 · שאלת עומק 2
+### Slide 37 - שאלת עומק 2 · TIT-FOR-TAT
+Header kicker: 37 · שאלת עומק 2
 Title: ביקורת עמוקה על Tit-for-Tat
 
 שאלה: מדוע Tit-for-Tat אינו באמת "הוגן"? איך asymmetric bandwidth פוגע? למה optimistic unchoke הכרחי? איך BitTyrant מנצל את האלגוריתם? למה contribution measurement בעייתי?
@@ -493,8 +564,8 @@ Title: ביקורת עמוקה על Tit-for-Tat
 
 ---
 
-### Slide 37 - שאלת עומק 3 · TCP מעל P2P
-Header kicker: 37 · שאלת עומק 3
+### Slide 38 - שאלת עומק 3 · TCP מעל P2P
+Header kicker: 38 · שאלת עומק 3
 Title: למה TCP מעל P2P יוצר מורכבות עצומה
 
 שאלה: מדוע TCP stream אינו message protocol? איך packet fragmentation משפיע על parsing? למה partial reads מסוכנים? איך concurrent communication מסבך synchronization? איך slow peers יוצרים HOL blocking?
@@ -507,8 +578,8 @@ Title: למה TCP מעל P2P יוצר מורכבות עצומה
 
 ---
 
-### Slide 38 - שאלת עומק 4 · אימות SHA-1
-Header kicker: 38 · שאלת עומק 4
+### Slide 39 - שאלת עומק 4 · אימות SHA-1
+Header kicker: 39 · שאלת עומק 4
 Title: ביקורת עמוקה על piece hash verification
 
 שאלה: מדוע piece-level hashing לא מגן מכל תקיפה? איך collision attacks על SHA-1 רלוונטיים? איך malicious peers עדיין יכולים לפגוע? איך corrupted blocks משפיעים על throughput? איך verification latency משפיע?
@@ -521,8 +592,8 @@ Title: ביקורת עמוקה על piece hash verification
 
 ---
 
-### Slide 39 - שאלת עומק 5 · PEER REPUTATION
-Header kicker: 39 · שאלת עומק 5
+### Slide 40 - שאלת עומק 5 · PEER REPUTATION
+Header kicker: 40 · שאלת עומק 5
 Title: הבעיה האמיתית במערכות מוניטין מבוזרות
 
 שאלה: מדוע reputation אינו מדד אמין? איך Sybil attacks משפיעים? למה peers חדשים נפגעים? איך network failures יוצרים false reputation? למה distributed trust קשה?
@@ -535,8 +606,8 @@ Title: הבעיה האמיתית במערכות מוניטין מבוזרות
 
 ---
 
-### Slide 40 - שאלת עומק 6 · ASYNCIO + REST
-Header kicker: 40 · שאלת עומק 6
+### Slide 41 - שאלת עומק 6 · ASYNCIO + REST
+Header kicker: 41 · שאלת עומק 6
 Title: ביקורת עמוקה על asyncio + REST Bridge
 
 שאלה: למה asyncio מסובך ב-multi-peer? איך blocking operations שוברים concurrency? למה REST polling יוצר overhead? איך synchronization בין Java ל-Python מסובך? למה race conditions עדיין אפשריים?
@@ -549,8 +620,8 @@ Title: ביקורת עמוקה על asyncio + REST Bridge
 
 ---
 
-### Slide 41 - שאלת עומק 7 · DISTRIBUTED SYSTEMS
-Header kicker: 41 · שאלת עומק 7
+### Slide 42 - שאלת עומק 7 · DISTRIBUTED SYSTEMS
+Header kicker: 42 · שאלת עומק 7
 Title: BitTorrent הוא בעצם בעיית Distributed Systems
 
 שאלה: מדוע swarm אינו יציב? איך churn משפיע על availability? מדוע decentralized coordination קשה? איך partial knowledge משפיע? למה eventual consistency מופיעה?
@@ -564,8 +635,8 @@ Title: BitTorrent הוא בעצם בעיית Distributed Systems
 
 ---
 
-### Slide 42 - שאלת עומק 8 · BENCODE
-Header kicker: 42 · שאלת עומק 8
+### Slide 43 - שאלת עומק 8 · BENCODE
+Header kicker: 43 · שאלת עומק 8
 Title: ביקורת עמוקה על Bencode parser
 
 שאלה: למה recursive parsing מסוכן? איך malformed torrents עלולים לקרוס parser? למה deeply nested בעייתי? איך integer overflows אפשריים? למה parser validation הוא attack surface?
@@ -578,8 +649,8 @@ Title: ביקורת עמוקה על Bencode parser
 
 ---
 
-### Slide 43 - שאלת עומק 9 · DOWNLOADMANAGER
-Header kicker: 43 · שאלת עומק 9
+### Slide 44 - שאלת עומק 9 · DOWNLOADMANAGER
+Header kicker: 44 · שאלת עומק 9
 Title: הבעיה האמיתית ב-DownloadManager Orchestration
 
 שאלה: למה scheduling requests קשה? איך concurrent requests יוצרים race? איך peer failures משפיעים על כל הזרימה? איך request queues מתפוצצות? למה timeout tuning הוא tradeoff?
@@ -592,8 +663,8 @@ Title: הבעיה האמיתית ב-DownloadManager Orchestration
 
 ---
 
-### Slide 44 - שאלת עומק 10 · הבעיה האמיתית
-Header kicker: 44 · שאלת עומק 10
+### Slide 45 - שאלת עומק 10 · הבעיה האמיתית
+Header kicker: 45 · שאלת עומק 10
 Title: "להוריד קבצים" הוא ה-outcome - הבעיה האמיתית אחרת
 
 שאלה: המערכת מתיימרת "לממש לקוח BitTorrent". הסבר למה בפועל מדובר בבעיית distributed optimization, asynchronous coordination, probabilistic peer behavior, transport uncertainty, ו-adversarial networking.
@@ -607,8 +678,8 @@ Title: "להוריד קבצים" הוא ה-outcome - הבעיה האמיתית �
 
 ---
 
-### Slide 45 - שאלות קוד · 1 ו-2
-Header kicker: 45 · שאלות קוד · 1-2
+### Slide 46 - שאלות קוד · 1 ו-2
+Header kicker: 46 · שאלות קוד · 1-2
 Title: select_piece_rarest_first · _tit_for_tat_unchoke
 
 קוד 1 · Stale peer state (select_piece_rarest_first):
@@ -621,8 +692,8 @@ Title: select_piece_rarest_first · _tit_for_tat_unchoke
 
 ---
 
-### Slide 46 - שאלות קוד · 3 ו-4
-Header kicker: 46 · שאלות קוד · 3-4
+### Slide 47 - שאלות קוד · 3 ו-4
+Header kicker: 47 · שאלות קוד · 3-4
 Title: read_message · submit_block + verify_hash
 
 קוד 3 · State machine (PeerConnection.read_message):
@@ -635,8 +706,8 @@ Title: read_message · submit_block + verify_hash
 
 ---
 
-### Slide 47 - שאלות קוד · 5 ו-6
-Header kicker: 47 · שאלות קוד · 5-6
+### Slide 48 - שאלות קוד · 5 ו-6
+Header kicker: 48 · שאלות קוד · 5-6
 Title: TrackerClient.announce · SecurityManager + PeerReputation
 
 קוד 5 · Malicious tracker (TrackerClient.announce):
@@ -649,8 +720,8 @@ Title: TrackerClient.announce · SecurityManager + PeerReputation
 
 ---
 
-### Slide 48 - שאלת קוד 7 · ASYNC BRIDGE
-Header kicker: 48 · שאלת קוד 7
+### Slide 49 - שאלת קוד 7 · ASYNC BRIDGE
+Header kicker: 49 · שאלת קוד 7
 Title: start_event_loop + _run_async - Event-loop starvation
 
 קוד 7 · Event-loop starvation:
