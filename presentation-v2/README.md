@@ -16,10 +16,10 @@ do not "improve" facts.
 
 1. `slides.md` holds every slide in order, with the title, the small header
    kicker, the body (bullets / tables / code), and screenshot placeholders.
-2. Transcribe each slide as written. Keep the wording. Where a slide cites a
-   teacher question (e.g. `שאלה ארכיטקטורה 3`, `תרגיל 14`, `שאלת פסילה 1`,
-   `שוברת מערכת 2`), keep the citation - it is intentional, so Adam can flip
-   straight to the matching slide if the examiner asks the question verbatim.
+2. Transcribe each slide as written. Keep the wording. The slides intentionally
+   present each teacher-pre-announced question **in natural flow** without
+   citing a question number - the goal is a walkthrough, not a Q&A. Do not add
+   citations or "תרגיל X" labels of your own.
 3. Where a slide says `[[SCREENSHOT: ...]]` or `[[DIAGRAM: ...]]`, place an
    empty image frame with the caption already filled in, so the student only
    drops a PNG/SVG in later. Do not redraw these - they are pasted images.
@@ -46,8 +46,6 @@ Match the v1 deck (`../presentation/`) one-to-one:
   lines). Syntax does not need coloring; readability first.
 - "ביקורת עמוקה" (deep-critique) slides intentionally state weaknesses. Keep
   that framing - the honesty is deliberate and earns credit in the defense.
-- "תרגיל הבוחן" (examiner-exercise) slides answer a specific pre-announced
-  question. Mark them with the matching kicker (e.g. `תרגיל 4 · סימולציה`).
 - Footer (optional, small): project name + "אדם זבולון · תשפ\"ו".
 
 ## Screenshots the student must paste (2 - 3)
@@ -72,27 +70,27 @@ https://mermaid.live - export PNG/SVG on a white background):
 
 ## Deck shape
 
-~55 slides organized as a single walkthrough in 8 parts (A - H) plus a short
-appendix (Q) with the 5 code-location pointers (the teacher's "שאלות פסילה" -
-disqualification questions that demand pointing at exact file:line in code).
+57 slides organized as a single walkthrough in 8 parts (A - H) plus a short
+2-slide appendix mapping the core mechanisms to their file:function in code
+(useful when the examiner asks "show me where in the code...").
 
-The flow is **base info -> deeper**, so the same examiner question never
-appears twice: every question is answered the first time its topic comes up
-naturally.
+The flow is **base info -> deeper**, and the same topic never appears twice:
+every pre-announced question the teacher sent is answered the first time its
+topic comes up naturally during the walk. The walkthrough does not name or
+number the questions inside the slides themselves.
 
-| Part | Slides | Theme | Teacher questions answered here |
-| --- | --- | --- | --- |
-| A | 1 - 7 | יסוד · מה ולמה | תרגיל 15, שאלת ארכיטקטורה 15 |
-| B | 8 - 19 | ארכיטקטורה ושכבות | ארכ' 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16, 18; תרגיל 1, 2, 11, 12 |
-| C | 20 - 25 | בחירת PIECE · Rarest-First | תרגיל 3, 4, 5, 14; קוד 1, 2, 3, 4 |
-| D | 26 - 32 | בחירת PEER · Tit-for-Tat | תרגיל 6, 7, 8; קוד 5, 6, 7, 8 |
-| E | 33 - 37 | פרוטוקול ו-Framing | קוד 13, 14, 15, 16, 18 |
-| F | 38 - 42 | אבטחה ושלמות | תרגיל 9, 10; קוד 9, 10, 11, 12, 17; פסילה (preview) |
-| G | 43 - 46 | מצב, scale, וכשל | תרגיל 13; ארכ' 13, 14, 15, 17, 19; קוד 19, 20 |
-| H | 47 - 52 | שוברות-מערכת ותוצאות | שוברת 1, 2, 3; ארכ' 20 |
-| End | 53 - 55 | מסקנות, מגבלות, תודה |  |
-| Appendix Q | 56 - 57 | מיקום בקוד · 5 שאלות הפסילה | פסילה 1, 2, 3, 4, 5 |
+| Part | Slides | Theme |
+| --- | --- | --- |
+| A | 1 - 7 | יסוד · מה ולמה |
+| B | 8 - 19 | ארכיטקטורה ושכבות (כולל שתי "שאלות הכרעה") |
+| C | 20 - 25 | בחירת PIECE · Rarest-First (סימולציה + קוד שורה-שורה + ביקורת) |
+| D | 26 - 32 | בחירת PEER · Tit-for-Tat (סימולציה + שלוש שכבות + ביקורת) |
+| E | 33 - 37 | פרוטוקול ו-Framing |
+| F | 38 - 42 | אבטחה ושלמות |
+| G | 43 - 46 | מצב, scale, וכשל |
+| H | 47 - 52 | תרחישי קצה ותוצאות אמפיריות |
+| End | 53 - 55 | מסקנות, מגבלות, תודה |
+| Appendix | 56 - 57 | מיקום בקוד למרכיבים המרכזיים |
 
-Total: 57 slides. The walkthrough body is 1 - 55 (~25 min spoken). The Q
-appendix is 2 slides for instant jumping if the examiner asks "show me where
-in the code...".
+The walkthrough body is slides 1 - 55 (~25 min spoken). The appendix is 2
+slides for instant jumping if needed during defense.
