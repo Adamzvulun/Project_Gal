@@ -94,7 +94,13 @@ if not exist java_gui\lib\json.jar (
     curl -sL "https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar" -o java_gui\lib\json.jar
 )
 
-javac -cp java_gui\lib\json.jar -d java_gui\build java_gui\src\*.java
+javac -encoding UTF-8 -cp java_gui\lib\json.jar -d java_gui\build java_gui\src\*.java
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo ERROR: Java compilation failed. See messages above.
+    pause
+    exit /b 1
+)
 echo        Done
 
 REM ---------- Create data directories ----------

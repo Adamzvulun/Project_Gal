@@ -98,7 +98,7 @@ if [ ! -f java_gui/lib/json.jar ]; then
         -o java_gui/lib/json.jar
 fi
 
-javac -cp java_gui/lib/json.jar -d java_gui/build java_gui/src/*.java 2>/dev/null
+javac -encoding UTF-8 -cp java_gui/lib/json.jar -d java_gui/build java_gui/src/*.java
 echo -e "       ${GREEN}Done${NC}"
 
 # ---------- Launch ----------
