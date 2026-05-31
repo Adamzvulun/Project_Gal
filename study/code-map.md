@@ -51,7 +51,7 @@
 | "Choke loop?" | `download_manager.py:590` `_choke_loop` | כל 10s טריגר tit-for-tat |
 | "Keep-alive?" | `download_manager.py:770` `_keep_alive_loop` | כל 60s |
 | "Disk write async?" | `download_manager.py:804` `_write_piece_sync` | רץ ב-ThreadPoolExecutor(2) |
-| "Endgame mode?" | `piece_manager.py:450` `find_in_progress_piece` | request חופף בסוף ההורדה |
+| "יש לך endgame?" | `download_manager.py:537` Step 3 + `piece_manager.py:450` | **לא endgame אמיתי** — רק work-stealing fallback (אין duplicate requests, אין CANCEL) |
 | "Persistence?" | `download_manager.py:966` `_save_state` + `:1014` `from_state_file` | JSON ב-`data/state/` |
 | "Tracker announce URL?" | `tracker_client.py:251` `_build_announce_url` | URL-encode info_hash + peer_id |
 | "ה-GUI polling?" | `TorrentClientGUI.java` ScheduledExecutorService | כל 500ms `/torrents` |
@@ -195,7 +195,7 @@ self.info_hash = hashlib.sha1(info_encoded).digest()  # 20 bytes
 | 434 | `send_bitfield(pieces)` | |
 | 447 | `send_request(idx, begin, length)` | |
 | **468** | **`send_piece(idx, begin, data)`** ⭐ | upload! |
-| 488 | `send_cancel(idx, begin, length)` | endgame |
+| 488 | `send_cancel(idx, begin, length)` | קיים אך **לא בשימוש** (היה משמש ל-endgame אמיתי) |
 | 493 | `send_keep_alive()` | length=0 |
 | 497 | `disconnect()` | close writer |
 | 519 | `can_request` property | pending < MAX_PENDING |
@@ -254,7 +254,7 @@ self.info_hash = hashlib.sha1(info_encoded).digest()  # 20 bytes
 | 432 | `get_frequency(piece_idx)` | לAlgorithm Stats |
 | 436 | `has_piece(piece_idx)` | |
 | 440 | `clear_peer_requests(peer_key)` | |
-| **450** | **`find_in_progress_piece(...)`** | endgame mode |
+| **450** | **`find_in_progress_piece(...)`** | work-stealing fallback (לא endgame אמיתי — משתמש ב-`exclude`, לכן אין duplicate) |
 | 471 | `get_our_bitfield()` | |
 
 **מבני נתונים פנימיים (חשוב לזכור!):**
@@ -738,7 +738,7 @@ ScheduledExecutorService every 500ms:
 | **Tit-for-Tat** | טיט-פור-טאט מילה במילה |
 | **Snubbing** | סנאבינג — peer ש-unchoked אבל לא שולח 60s |
 | **Optimistic Unchoke** | בחירה אקראית של peer ל-unchoke (לא חישובית) |
-| **Endgame mode** | בסוף ההורדה — request חופף מכמה peers |
+| **Endgame mode (קלאסי)** | שולח את אותו block לכמה peers בסוף ההורדה + CANCEL לאחרים. **לא ממומש אצלי** — יש רק work-stealing fallback. |
 | **Sliding window** | 20 שניות (TIT_FOR_TAT_WINDOW) |
 | **SHAttered** | מתקפת collision על SHA-1 (2017) |
 | **BitTyrant** | NSDI 2007 — מאמר על ניצול tit-for-tat |

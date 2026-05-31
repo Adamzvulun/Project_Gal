@@ -383,6 +383,7 @@
     <li><a href="#s9">תיקונים שעשיתי</a></li>
     <li><a href="#s10">Pipelining</a></li>
     <li><a href="#s11">סיבוכיות (Big-O)</a></li>
+    <li><a href="#s12">Endgame — מה יש לי באמת</a></li>
   </ol>
 </aside>
 
@@ -435,7 +436,7 @@
 <tr><td>"Choke loop?"</td><td><code>download_manager.py:590</code> <code>_choke_loop</code></td><td>כל 10s טריגר tit-for-tat</td></tr>
 <tr><td>"Keep-alive?"</td><td><code>download_manager.py:770</code> <code>_keep_alive_loop</code></td><td>כל 60s</td></tr>
 <tr><td>"Disk write async?"</td><td><code>download_manager.py:804</code> <code>_write_piece_sync</code></td><td>רץ ב-ThreadPoolExecutor(2)</td></tr>
-<tr><td>"Endgame mode?"</td><td><code>piece_manager.py:450</code> <code>find_in_progress_piece</code></td><td>request חופף בסוף ההורדה</td></tr>
+<tr><td>"יש לך endgame?"</td><td><code>download_manager.py:537</code> Step 3 + <code>piece_manager.py:450</code></td><td><strong>לא endgame אמיתי</strong> — רק work-stealing fallback (אין duplicate requests, אין CANCEL)</td></tr>
 <tr><td>"Persistence?"</td><td><code>download_manager.py:966</code> <code>_save_state</code> + <code>:1014</code></td><td>JSON ב-<code>data/state/</code></td></tr>
 <tr><td>"Tracker announce URL?"</td><td><code>tracker_client.py:251</code> <code>_build_announce_url</code></td><td>URL-encode info_hash + peer_id</td></tr>
 <tr><td>"ה-GUI polling?"</td><td><code>TorrentClientGUI.java</code> ScheduledExecutorService</td><td>כל 500ms <code>/torrents</code></td></tr>
@@ -570,7 +571,7 @@ info_encoded = bencode.encode(info)
 <tr><td>386</td><td><code>send_message(type, payload)</code></td><td>length prefix + write + drain</td></tr>
 <tr><td>409-447</td><td>send_interested / not_interested / choke / unchoke / have / bitfield / request</td><td>שליחת הודעות מסוג זה</td></tr>
 <tr><td><strong>468</strong></td><td><strong><code>send_piece(idx, begin, data)</code></strong> ⭐</td><td>upload!</td></tr>
-<tr><td>488</td><td><code>send_cancel(idx, begin, length)</code></td><td>endgame</td></tr>
+<tr><td>488</td><td><code>send_cancel(idx, begin, length)</code></td><td>קיים אך <strong>לא בשימוש</strong> (היה משמש ל-endgame אמיתי)</td></tr>
 <tr><td>493</td><td><code>send_keep_alive()</code></td><td>length=0</td></tr>
 <tr><td>497</td><td><code>disconnect()</code></td><td>close writer</td></tr>
 <tr><td>519-546</td><td>can_request, request_capacity, has_piece, time_since_last_activity</td><td>helpers</td></tr>
@@ -608,7 +609,7 @@ info_encoded = bencode.encode(info)
 <tr><td><strong>395</strong></td><td><strong><code>verify_piece(piece_idx)</code></strong></td><td>wrapper לhash check</td></tr>
 <tr><td>414</td><td><code>get_piece_data(piece_idx)</code></td><td>לupload</td></tr>
 <tr><td>428-440</td><td>get_status_list, get_frequency, has_piece, clear_peer_requests</td><td>helpers</td></tr>
-<tr><td><strong>450</strong></td><td><strong><code>find_in_progress_piece(...)</code></strong></td><td>endgame mode</td></tr>
+<tr><td><strong>450</strong></td><td><strong><code>find_in_progress_piece(...)</code></strong></td><td>work-stealing fallback (לא endgame אמיתי — משתמש ב-<code>exclude</code>, לכן אין duplicate)</td></tr>
 <tr><td>471</td><td><code>get_our_bitfield()</code></td><td></td></tr>
 </tbody>
 </table>
@@ -1065,7 +1066,7 @@ msg_data = <span class="kw">await</span> reader.readexactly(length)</pre>
 <tr><td><strong>Tit-for-Tat</strong></td><td>טיט-פור-טאט מילה במילה</td></tr>
 <tr><td><strong>Snubbing</strong></td><td>סנאבינג — peer ש-unchoked אבל לא שולח 60s</td></tr>
 <tr><td><strong>Optimistic Unchoke</strong></td><td>בחירה אקראית של peer ל-unchoke</td></tr>
-<tr><td><strong>Endgame mode</strong></td><td>בסוף ההורדה — request חופף מכמה peers</td></tr>
+<tr><td><strong>Endgame mode (קלאסי)</strong></td><td>שולח את אותו block לכמה peers בסוף ההורדה + CANCEL לאחרים. <strong>לא ממומש אצלי</strong> — יש רק work-stealing fallback.</td></tr>
 <tr><td><strong>Sliding window</strong></td><td>20 שניות (TIT_FOR_TAT_WINDOW)</td></tr>
 <tr><td><strong>SHAttered</strong></td><td>מתקפת collision על SHA-1 (2017)</td></tr>
 <tr><td><strong>BitTyrant</strong></td><td>NSDI 2007 — מאמר על ניצול tit-for-tat</td></tr>
@@ -1198,10 +1199,63 @@ BLOCK_SIZE = <span class="num">16</span> KB
 <tbody>
 <tr><td>"למה דווקא 50?"</td><td>איזון throughput vs זיכרון. 50 × 16KB = 800KB per peer. עם 50 peers = 40MB סה"כ. סביר.</td></tr>
 <tr><td>"מה אם peer מאבד request?"</td><td><code>PIECE_REQUEST_TIMEOUT = 30s</code> → <code>reset_stale_pieces</code> → blockא חוזר ל-MISSING ונשלח שוב.</td></tr>
-<tr><td>"איך זה משתלב עם endgame?"</td><td>בסוף ההורדה אותה בקשה נשלחת לכמה peers במקביל דרך <code>find_in_progress_piece</code> (<code>piece_manager.py:450</code>).</td></tr>
 <tr><td>"זה אותו דבר כמו HTTP/2 pipelining?"</td><td>הרעיון זהה — multiple requests in flight. אבל BitTorrent עושה זאת on top of TCP בלי multiplexing — request order לא נשמר, ID של block (piece, offset, length) הוא המפתח.</td></tr>
 </tbody>
 </table>
+</section>
+
+<!-- ============================================================ -->
+<section id="s12">
+<h2>12. Endgame Mode — מה יש לי באמת</h2>
+
+<div class="callout"><strong>הודאה כנה:</strong> אין לי endgame mode קלאסי. יש לי <strong>work-stealing fallback</strong>. הקוד שלי קורא לזה "endgame" בהערות אבל ההתנהגות שונה. חשוב להבחין בבחינה.</div>
+
+<h3>מה ההבדל?</h3>
+<table>
+<thead><tr><th>תכונה</th><th>Endgame קלאסי (BEP)</th><th>מה יש אצלי</th></tr></thead>
+<tbody>
+<tr><td><strong>מתי מופעל</strong></td><td>רק כשנשארו מעט pieces (כל ה-MISSING תפוסים)</td><td>רץ <strong>תמיד</strong> כ-Step 3 fallback בכל קריאה ל-<code>_request_from_peer</code></td></tr>
+<tr><td><strong>Duplicate requests</strong></td><td>שולח את <strong>אותו block</strong> לכמה peers במקביל</td><td><strong>אין</strong> — <code>exclude=assigned_pieces</code> מבטיח peer יחיד לpiece</td></tr>
+<tr><td><strong>CANCEL לאחרים</strong></td><td>כשblock ראשון מגיע, שולח <code>CANCEL</code> לכל השאר</td><td><strong>לא בשימוש</strong> — <code>send_cancel</code> קיים ב-<code>peer_connection.py:488</code> אבל אף אחד לא קורא לו</td></tr>
+<tr><td><strong>מטרה</strong></td><td>לא להיתקע על peer איטי בסוף ההורדה</td><td>לתת לpeer עבודה כשאין piece חדש שהוא מחזיק</td></tr>
+</tbody>
+</table>
+
+<h3>הקוד שיש לי (download_manager.py:537)</h3>
+<pre><span class="com"># Step 3: Endgame — find an IN_PROGRESS piece with timed-out blocks</span>
+assigned_pieces = set(<span class="self">self</span>._peer_piece.values())
+fallback_idx = <span class="self">self</span>.piece_manager.find_in_progress_piece(
+    conn.peer_pieces, exclude=assigned_pieces   <span class="com"># ⚠️ זה ההבדל מ-endgame</span>
+)
+<span class="kw">if</span> fallback_idx <span class="kw">is not None</span>:
+    <span class="self">self</span>._peer_piece[peer_key] = fallback_idx
+    blocks = <span class="self">self</span>.piece_manager.pieces[fallback_idx].get_requestable_blocks()
+    <span class="kw">await</span> <span class="self">self</span>._send_block_requests(conn, peer_key, blocks, capacity)</pre>
+
+<h3>find_in_progress_piece (piece_manager.py:450)</h3>
+<pre><span class="kw">def</span> <span class="fn">find_in_progress_piece</span>(<span class="self">self</span>, peer_pieces, exclude=<span class="kw">None</span>):
+    <span class="kw">for</span> piece <span class="kw">in</span> <span class="self">self</span>.pieces:
+        <span class="kw">if</span> piece.status != PieceStatus.IN_PROGRESS: <span class="kw">continue</span>
+        <span class="kw">if not</span> peer_pieces[piece.index]: <span class="kw">continue</span>
+        <span class="kw">if</span> exclude <span class="kw">and</span> piece.index <span class="kw">in</span> exclude: <span class="kw">continue</span>
+        <span class="kw">if</span> piece.get_requestable_blocks():   <span class="com"># רק blocks שעוד לא בבקשה!</span>
+            <span class="kw">return</span> piece.index
+    <span class="kw">return None</span></pre>
+<p><strong>שתי השורות החשובות:</strong> <code>exclude</code> + <code>get_requestable_blocks()</code> — שתיהן יחד מבטיחות שאני <strong>לא</strong> שולח אותה בקשה לכמה peers.</p>
+
+<h3>מה לומר לבוחן (אם ישאל "יש endgame?")</h3>
+<div class="tip">
+<p>"<strong>לא ממומש endgame mode קלאסי.</strong> יש לי <strong>fallback strategy</strong> ב-Step 3 של <code>_request_from_peer</code> שעוזרת לpeer לעבוד על piece קיים אם אין לו piece פנוי. ההבדל מ-endgame האמיתי הוא שאני לא שולח duplicate requests — <code>find_in_progress_piece</code> משתמש ב-<code>exclude</code> כדי לוודא peer אחד לpiece. ה-<code>send_cancel</code> קיים ב-<code>peer_connection.py:488</code> אבל לא בשימוש.</p>
+<p>כדי לממש endgame אמיתי הייתי צריך:</p>
+<ol>
+<li><strong>Trigger</strong> כשנשארו פחות מ-5% מהpieces</li>
+<li>להסיר את ה-<code>exclude</code> כדי לאפשר duplicate</li>
+<li>להוסיף לוגיקה ששולחת <code>CANCEL</code> כשblock מגיע מ-peer ראשון</li>
+</ol>
+</div>
+
+<h3>למה זה בעצם תשובה חזקה?</h3>
+<p>תשובה שמראה <strong>הבנה</strong> של ההבדל בין מה שמומש למה ש-BEP מציין — חזקה יותר מלהגיד "כן יש לי" ולא להבין למה זה לא עובד כמו ש-spec דורש. בוחן אקדמי מעדיף סטודנט שיודע מה הוא לא עשה ולמה.</p>
 </section>
 
 <!-- ============================================================ -->
@@ -1227,7 +1281,7 @@ BLOCK_SIZE = <span class="num">16</span> KB
 <tr><td>Disk write (piece)</td><td>O(K)</td><td>K = piece size, רץ ב-executor</td><td><code>download_manager.py:804</code></td></tr>
 <tr><td>Broadcast HAVE</td><td>O(P)</td><td>P peers, async concurrent (wall-clock קבוע)</td><td><code>download_manager.py:785</code></td></tr>
 <tr><td>send_request (pipeline)</td><td><strong>O(1)</strong></td><td><code>set.add</code></td><td><code>peer_connection.py:447</code></td></tr>
-<tr><td>Endgame find_piece</td><td>O(N)</td><td>iteration על IN_PROGRESS pieces</td><td><code>piece_manager.py:450</code></td></tr>
+<tr><td>Work-stealing fallback (<code>find_in_progress_piece</code>)</td><td>O(N)</td><td>iteration על IN_PROGRESS pieces</td><td><code>piece_manager.py:450</code></td></tr>
 </tbody>
 </table>
 
