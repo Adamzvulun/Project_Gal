@@ -381,6 +381,8 @@
     <li><a href="#s7">Data Flow — זרימות</a></li>
     <li><a href="#s8">מילון מונחים</a></li>
     <li><a href="#s9">תיקונים שעשיתי</a></li>
+    <li><a href="#s10">Pipelining</a></li>
+    <li><a href="#s11">סיבוכיות (Big-O)</a></li>
   </ol>
 </aside>
 
@@ -1120,6 +1122,211 @@ msg_data = <span class="kw">await</span> reader.readexactly(length)</pre>
     <li>"מה הקבוע?" → §5.</li>
   </ol>
   <p style="text-align:center; font-size:18px; margin-top:16px;"><strong>בהצלחה 🚀</strong></p>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s10">
+<h2>10. Pipelining</h2>
+
+<h3>הגדרה</h3>
+<p>במקום לשלוח <code>REQUEST</code> ולחכות ל-<code>PIECE</code> לפני הבא, אני שולח <strong>עד 50 בקשות פתוחות בו-זמנית</strong> לכל peer. תשובות מגיעות אסינכרונית, וכל PIECE שמגיע פותח מקום לבקשה חדשה. הצינור (TCP) תמיד מלא.</p>
+
+<div class="callout"><strong>למה זה קריטי:</strong> TCP הוא <em>bandwidth-delay product pipe</em>. בלי pipelining, על RTT של 100ms ובלוקים של 16KB, ההורדה מוגבלת ל-160 KB/s. עם pipeline של 50 — 8 MB/s. <strong>פי 50.</strong></div>
+
+<h3>החישוב שאני זורק לבוחן</h3>
+<pre>RTT (round-trip) טיפוסי = <span class="num">100</span>ms
+BLOCK_SIZE = <span class="num">16</span> KB
+
+<span class="com">ללא pipelining:</span>
+  block אחד לכל RTT
+  → <span class="num">16</span> KB / <span class="num">0.1</span>s = <span class="num">160</span> KB/s   <span class="com"># bottleneck!</span>
+
+<span class="com">עם pipelining של 50:</span>
+  <span class="num">50</span> blocks לכל RTT
+  → <span class="num">50</span> × <span class="num">16</span> KB / <span class="num">0.1</span>s = <span class="num">8</span> MB/s   <span class="com"># פי 50</span></pre>
+
+<h3>איפה בקוד</h3>
+<table>
+<thead><tr><th>Line</th><th>קוד</th><th>תפקיד</th></tr></thead>
+<tbody>
+<tr><td><code>peer_connection.py:~30</code></td><td><code>MAX_PENDING_REQUESTS = 50</code></td><td><strong>עומק ה-pipeline</strong></td></tr>
+<tr><td><code>peer_connection.py:519</code></td><td><code>can_request</code> property</td><td><code>pending &lt; MAX_PENDING</code></td></tr>
+<tr><td><code>peer_connection.py:536</code></td><td><code>request_capacity</code></td><td>כמה עוד אפשר לשלוח עכשיו</td></tr>
+<tr><td><code>peer_connection.py:447</code></td><td><code>send_request(idx, begin, length)</code></td><td><strong>increment</strong> של pending</td></tr>
+<tr><td><code>peer_connection.py:~340</code></td><td>בתוך <code>_handle_message</code> PIECE branch</td><td><strong>decrement</strong> של pending</td></tr>
+<tr><td><code>download_manager.py:547</code></td><td><code>_send_block_requests(conn, peer_key, ...)</code></td><td><strong>שולח batch</strong> עד <code>request_capacity</code></td></tr>
+</tbody>
+</table>
+
+<h3>הקוד עצמו</h3>
+
+<p><strong>State בכל peer (peer_connection.py):</strong></p>
+<pre><span class="self">self</span>._pending_requests: Set[Tuple[<span class="kw">int</span>, <span class="kw">int</span>, <span class="kw">int</span>]]  <span class="com"># (piece, offset, length)</span>
+
+<span class="kw">@property</span>
+<span class="kw">def</span> <span class="fn">can_request</span>(<span class="self">self</span>) -&gt; <span class="kw">bool</span>:
+    <span class="kw">return</span> len(<span class="self">self</span>._pending_requests) &lt; MAX_PENDING_REQUESTS
+
+<span class="kw">@property</span>
+<span class="kw">def</span> <span class="fn">request_capacity</span>(<span class="self">self</span>) -&gt; <span class="kw">int</span>:
+    <span class="kw">return</span> MAX_PENDING_REQUESTS - len(<span class="self">self</span>._pending_requests)</pre>
+
+<p><strong>שליחת batch (download_manager.py:547):</strong></p>
+<pre><span class="kw">async def</span> <span class="fn">_send_block_requests</span>(<span class="self">self</span>, conn, peer_key, blocks):
+    capacity = conn.request_capacity              <span class="com"># כמה אני יכול לשלוח</span>
+    <span class="kw">for</span> block <span class="kw">in</span> blocks[:capacity]:               <span class="com"># batch עד הגבול</span>
+        <span class="kw">await</span> conn.send_request(block.piece_index, block.offset, block.length)
+        <span class="com"># send_request מוסיף ל-_pending_requests</span></pre>
+
+<p><strong>כש-PIECE מגיע (פינוי מקום + מילוי מיידי):</strong></p>
+<pre><span class="kw">elif</span> message.type == MessageType.PIECE:
+    key = (piece_idx, offset, length)
+    <span class="self">self</span>._pending_requests.discard(key)           <span class="com"># פינוי מקום</span>
+    <span class="com"># ב-_on_peer_message:</span>
+    <span class="kw">await</span> <span class="self">self</span>._request_from_peer(peer_key, conn)  <span class="com"># מילוי מיידי</span></pre>
+
+<h3>מה לומר בעל-פה</h3>
+<div class="tip">
+<p>"Pipelining זה שאני לא מחכה ל-PIECE לפני שאני שולח REQUEST הבא. במקום, אני שומר ב-<code>_pending_requests</code> set של עד <strong>50 בקשות פתוחות</strong> לכל peer. כל פעם שמגיע PIECE, אני מוציא את הבקשה מה-set ומיד שולח חדשה — כך הצינור תמיד מלא.</p>
+<p>בלי זה, על RTT של 100ms הייתי מקבל רק 160 KB/s. עם pipeline של 50, אני מקבל 8 MB/s — <strong>פי 50</strong>. זה ההבדל בין לעבוד לבין לא לעבוד על קישור אמיתי."</p>
+</div>
+
+<h3>נקודות בונוס (אם הבוחן ילחץ)</h3>
+<table>
+<thead><tr><th>שאלה</th><th>תשובה</th></tr></thead>
+<tbody>
+<tr><td>"למה דווקא 50?"</td><td>איזון throughput vs זיכרון. 50 × 16KB = 800KB per peer. עם 50 peers = 40MB סה"כ. סביר.</td></tr>
+<tr><td>"מה אם peer מאבד request?"</td><td><code>PIECE_REQUEST_TIMEOUT = 30s</code> → <code>reset_stale_pieces</code> → blockא חוזר ל-MISSING ונשלח שוב.</td></tr>
+<tr><td>"איך זה משתלב עם endgame?"</td><td>בסוף ההורדה אותה בקשה נשלחת לכמה peers במקביל דרך <code>find_in_progress_piece</code> (<code>piece_manager.py:450</code>).</td></tr>
+<tr><td>"זה אותו דבר כמו HTTP/2 pipelining?"</td><td>הרעיון זהה — multiple requests in flight. אבל BitTorrent עושה זאת on top of TCP בלי multiplexing — request order לא נשמר, ID של block (piece, offset, length) הוא המפתח.</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ============================================================ -->
+<section id="s11">
+<h2>11. סיבוכיות (Big-O) של הפרויקט</h2>
+
+<h3>טבלת זמן ראשית</h3>
+<table>
+<thead><tr><th>פעולה</th><th>Big-O</th><th>הסבר</th><th>קובץ</th></tr></thead>
+<tbody>
+<tr><td><strong>Rarest-First selection</strong></td><td><strong>O(N)</strong></td><td>סריקה של כל ה-pieces למציאת min freq</td><td><code>piece_manager.py:279</code></td></tr>
+<tr><td>Random selection</td><td>O(N)</td><td>אותו דבר — סריקה למציאת candidates</td><td><code>piece_manager.py:319</code></td></tr>
+<tr><td>HAVE update</td><td><strong>O(1)</strong></td><td>increment של dictionary entry</td><td><code>piece_manager.py:246</code></td></tr>
+<tr><td>BITFIELD update</td><td>O(N)</td><td>iteration על כל ה-bits</td><td><code>piece_manager.py:220</code></td></tr>
+<tr><td><strong>Tit-for-Tat round</strong></td><td><strong>O(P log P · W)</strong></td><td>sort של P peers; כל compare = O(W)</td><td><code>download_manager.py:610</code></td></tr>
+<tr><td>Sliding window query</td><td>O(W)</td><td>iteration על deque (W ≤ 30)</td><td><code>peer_connection.py:552</code></td></tr>
+<tr><td>SHA-1 verification</td><td>O(K)</td><td>K = piece size (256KB)</td><td><code>security.py:96</code></td></tr>
+<tr><td>Length-prefix read</td><td>O(L)</td><td>L = message size</td><td><code>peer_connection.py:271</code></td></tr>
+<tr><td>info_hash compute</td><td>O(I)</td><td>I = info dict size</td><td><code>torrent_metadata.py</code></td></tr>
+<tr><td>Compact peers parse</td><td>O(M)</td><td>M = peers in response</td><td><code>tracker_client.py:104</code></td></tr>
+<tr><td>Bencode encode (dict)</td><td>O(K log K + S)</td><td>sort keys + serialize S bytes</td><td><code>bencode.py:110</code></td></tr>
+<tr><td>Bencode decode</td><td>O(S)</td><td>single pass</td><td><code>bencode.py:51</code></td></tr>
+<tr><td>Disk write (piece)</td><td>O(K)</td><td>K = piece size, רץ ב-executor</td><td><code>download_manager.py:804</code></td></tr>
+<tr><td>Broadcast HAVE</td><td>O(P)</td><td>P peers, async concurrent (wall-clock קבוע)</td><td><code>download_manager.py:785</code></td></tr>
+<tr><td>send_request (pipeline)</td><td><strong>O(1)</strong></td><td><code>set.add</code></td><td><code>peer_connection.py:447</code></td></tr>
+<tr><td>Endgame find_piece</td><td>O(N)</td><td>iteration על IN_PROGRESS pieces</td><td><code>piece_manager.py:450</code></td></tr>
+</tbody>
+</table>
+
+<div class="callout">
+<strong>מקרא המשתנים:</strong>
+<ul style="margin: 8px 0;">
+<li><strong>N</strong> = <code>num_pieces</code> (לקובץ 1GB עם piece=256KB → N ≈ 4,000)</li>
+<li><strong>P</strong> = <code>num_peers</code> (חסום ב-<code>MAX_CONNECTIONS = 50</code>)</li>
+<li><strong>K</strong> = <code>piece_length</code> (256 KB טיפוסי)</li>
+<li><strong>W</strong> = sample window size (≤ 30 שניות של דגימות)</li>
+<li><strong>M</strong> = peers שמגיעים מ-tracker (טיפוסי 50-200)</li>
+</ul>
+</div>
+
+<h3>טבלת זיכרון (Space Complexity)</h3>
+<table>
+<thead><tr><th>מבנה</th><th>Big-O</th><th>חישוב מספרי (N=4000, P=50)</th></tr></thead>
+<tbody>
+<tr><td><code>_peer_frequency</code></td><td>O(N)</td><td>4000 × 8 bytes ≈ <strong>32 KB</strong></td></tr>
+<tr><td><code>_peer_pieces</code></td><td>O(N·P) worst case</td><td>50 × 4000 bits ≈ <strong>25 KB</strong></td></tr>
+<tr><td><code>Piece</code> objects</td><td>O(N)</td><td>dataclass per piece</td></tr>
+<tr><td><code>_download_samples</code> per peer</td><td>O(W)</td><td>deque מוגבל ל-30 sec</td></tr>
+<tr><td><code>_pending_requests</code> per peer</td><td>O(50)</td><td>חסום ב-<code>MAX_PENDING_REQUESTS</code></td></tr>
+<tr><td><strong>Block data in flight</strong></td><td><strong>O(P · 50 · BLOCK)</strong></td><td>50 × 50 × 16KB = <strong>40 MB</strong> ← הכי כבד</td></tr>
+<tr><td>סה"כ זיכרון</td><td>O(N + P·N + P·W + P·BLOCK)</td><td>נשלט ע"י blocks in flight</td></tr>
+</tbody>
+</table>
+
+<h3>הניתוחים שהבוחן ירצה לשמוע</h3>
+
+<h4>Rarest-First — למה O(N) ולא יותר טוב?</h4>
+<pre><span class="kw">for</span> i <span class="kw">in</span> range(<span class="self">self</span>.num_pieces):           <span class="com"># O(N)</span>
+    <span class="kw">if</span> status != MISSING: <span class="kw">continue</span>
+    freq = <span class="self">self</span>._peer_frequency.get(i, <span class="num">0</span>)   <span class="com"># O(1)</span>
+    <span class="kw">if</span> freq &lt; min_freq: candidates = [i]
+    <span class="kw">elif</span> freq == min_freq: candidates.append(i)
+<span class="kw">return</span> random.choice(candidates)           <span class="com"># O(K), K ≤ N</span></pre>
+
+<p><strong>שאלה אפשרית:</strong> "אפשר ב-O(log N) עם min-heap?"</p>
+<div class="callout">
+<strong>תשובה:</strong> כן — <code>heapq</code> עם <code>(freq, piece_idx)</code>. אבל יש 3 בעיות:
+<ol>
+<li><strong>Tie-breaking:</strong> ה-heap נותן <em>אחד</em> מ-min, לא את כל ה-min set. הייתי צריך לשלוף עד שה-freq עולה ולשמור bucket.</li>
+<li><strong>Updates:</strong> כל BITFIELD/HAVE → O(log N) במקום O(1).</li>
+<li><strong>N קטן:</strong> ל-N=4000, O(N) זה כ-4μs ב-Python. ה-constant factor של heap operations מבטל את היתרון.</li>
+</ol>
+עם זאת — לטורנט של 100GB (N=400,000) — הייתי שוקל heap.
+</div>
+
+<h4>Tit-for-Tat — מה אומר O(P log P · W)?</h4>
+<pre>non_snubbed.sort(
+    key=<span class="kw">lambda</span> x: x[<span class="num">1</span>].bytes_received_in_window(<span class="num">20</span>),  <span class="com"># O(W) per call</span>
+    reverse=<span class="kw">True</span>
+)</pre>
+<ul>
+<li><strong>Sort עצמו:</strong> O(P log P) comparisons</li>
+<li><strong>כל comparison:</strong> O(W) — קריאה ל-<code>bytes_received_in_window</code></li>
+<li><strong>סה"כ:</strong> O(P · log P · W)</li>
+</ul>
+<p><strong>עם המספרים:</strong> P=50, W=30 → 50 × log(50) × 30 ≈ <strong>9,000 פעולות</strong>. רץ כל 10s → זניח לחלוטין.</p>
+<p><strong>אופטימיזציה אפשרית:</strong> לעשות cache ל-<code>bytes_received_in_window</code> פעם אחת לפני ה-sort → O(P·W + P log P). לא עשיתי כי אין צורך.</p>
+
+<h4>Sliding Window — למה O(W) ולא O(1)?</h4>
+<pre><span class="kw">def</span> <span class="fn">bytes_received_in_window</span>(<span class="self">self</span>, window=<span class="num">20.0</span>):
+    cutoff = time.time() - window
+    total = <span class="num">0</span>
+    <span class="kw">for</span> t, b <span class="kw">in</span> <span class="self">self</span>._download_samples:    <span class="com"># O(W)</span>
+        <span class="kw">if</span> t &gt;= cutoff:
+            total += b
+    <span class="kw">return</span> total</pre>
+<p><strong>שאלה אפשרית:</strong> "אפשר O(1) עם running sum?"</p>
+<div class="callout">
+<strong>תשובה:</strong> כן — לתחזק <code>running_total</code> שמתעדכן ב-append ו-eviction. הסיבה שלא עשיתי: W=30, וקריאות הן 50 peers × 1 לכל 10s = 5/sec. סה"כ <strong>150 פעולות לשנייה</strong> — חסר משמעות.
+</div>
+
+<h4>BITFIELD update — O(N) הוא הצוואר בקבוק האמיתי</h4>
+<pre><span class="kw">def</span> <span class="fn">update_peer_pieces</span>(<span class="self">self</span>, peer_key, pieces):
+    <span class="kw">for</span> i <span class="kw">in</span> range(len(pieces)):           <span class="com"># O(N)</span>
+        <span class="kw">if</span> pieces[i]:
+            <span class="self">self</span>._peer_frequency[i] += <span class="num">1</span>     <span class="com"># O(1)</span></pre>
+<p><strong>מתי זה רץ?</strong> פעם אחת לכל peer חדש שמתחבר. אם 200 peers מתחברים תוך דקה ול-N=10,000 → <strong>2M פעולות = כ-200ms ב-Python</strong>. זה מורגש. <strong>זה הדבר היחיד שלא אופטמלתי</strong>, ואם הבוחן ישאל "מה היית משנה" — זו התשובה.</p>
+
+<h4>Broadcast HAVE — O(P) אבל concurrent</h4>
+<pre><span class="kw">async def</span> <span class="fn">_broadcast_have</span>(<span class="self">self</span>, piece_index):
+    tasks = [<span class="self">self</span>._safe_send_have(conn, piece_index)
+             <span class="kw">for</span> conn <span class="kw">in</span> <span class="self">self</span>._connections.values()]
+    <span class="kw">await</span> asyncio.gather(*tasks, return_exceptions=<span class="kw">True</span>)</pre>
+<p>P משימות נשלחות במקביל. <strong>Wall-clock time</strong> = O(max network latency), <strong>לא</strong> O(P × latency). זה הקסם של asyncio — concurrency בלי threads.</p>
+
+<h3>מה לומר בעל-פה (תבנית קצרה)</h3>
+<div class="tip">
+<p>"רוב הפעולות החמות הן O(N) או O(1):</p>
+<ul>
+<li><strong>בחירת piece</strong> היא O(N) — סריקה לינארית של ה-pieces. אפשר O(log N) עם min-heap אבל ל-N=4000 זה לא מצדיק את המורכבות.</li>
+<li><strong>Tit-for-tat</strong> הוא O(P log P · W) כי יש sort, אבל P חסום ב-50, וזה רץ רק כל 10 שניות.</li>
+<li><strong>SHA-1 verification</strong> הוא O(K) על piece size — 256KB. כדי לא לחסום את ה-event loop, אני מריץ אותו ב-<code>ThreadPoolExecutor</code>.</li>
+<li><strong>send_request</strong> ו-<strong>HAVE update</strong> הם O(1) — הפעולות שרצות הכי הרבה.</li>
+</ul>
+<p><strong>זיכרון:</strong> הצורך הדומיננטי הוא blocks ב-flight — 50 peers × 50 pending × 16KB = <strong>40MB</strong>. שאר המבנים זניחים."</p>
 </div>
 </section>
 
