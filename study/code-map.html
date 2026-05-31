@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>Code Map · מפת הקוד המאוחדת</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --panel: #ffffff;
+    --border: #d1d5db;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --critical: #dc2626;
+    --warn: #f59e0b;
+    --ok: #16a34a;
+    --code-bg: #1e293b;
+    --code-text: #e2e8f0;
+    --code-key: #c084fc;
+    --code-str: #86efac;
+    --code-num: #fbbf24;
+    --code-com: #94a3b8;
+    --table-stripe: #f3f4f6;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Segoe UI', 'Heebo', 'Arial Hebrew', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* Layout: sidebar + main */
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    max-width: 1500px;
+    margin: 0 auto;
+    gap: 32px;
+    padding: 24px;
+  }
+
+  /* Sidebar TOC */
+  aside {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    box-shadow: var(--shadow);
+  }
+  aside h2 {
+    font-size: 14px;
+    margin: 0 0 12px 0;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  aside ol {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: toc;
+  }
+  aside li {
+    counter-increment: toc;
+    margin-bottom: 4px;
+  }
+  aside a {
+    display: block;
+    padding: 8px 12px;
+    text-decoration: none;
+    color: var(--text);
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+  aside a::before {
+    content: counter(toc) ".";
+    color: var(--muted);
+    margin-left: 8px;
+    font-weight: 600;
+  }
+  aside a:hover {
+    background: var(--accent-light);
+    color: var(--accent);
+  }
+
+  /* Main content */
+  main {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px;
+    box-shadow: var(--shadow);
+    min-width: 0;
+  }
+
+  /* Header */
+  header.title {
+    text-align: center;
+    padding-bottom: 24px;
+    margin-bottom: 32px;
+    border-bottom: 3px solid var(--accent);
+  }
+  header.title h1 {
+    font-size: 32px;
+    margin: 0 0 8px 0;
+    color: var(--accent);
+  }
+  header.title .subtitle {
+    color: var(--muted);
+    font-size: 16px;
+  }
+  header.title .meta {
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* Sections */
+  section {
+    margin-bottom: 48px;
+    scroll-margin-top: 24px;
+  }
+  section h2 {
+    font-size: 24px;
+    border-right: 4px solid var(--accent);
+    padding-right: 12px;
+    margin-top: 0;
+    color: var(--accent);
+  }
+  section h3 {
+    font-size: 19px;
+    color: #374151;
+    margin-top: 32px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  section h4 {
+    font-size: 16px;
+    margin-top: 24px;
+    color: #4b5563;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  th {
+    background: #f1f5f9;
+    color: #334155;
+    text-align: right;
+    padding: 10px 12px;
+    font-weight: 600;
+    border-bottom: 2px solid var(--border);
+    font-size: 13px;
+  }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: var(--table-stripe); }
+  tr:hover td { background: var(--accent-light); }
+  td code, th code {
+    background: #eef2ff;
+    color: #4338ca;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 12.5px;
+    direction: ltr;
+    display: inline-block;
+  }
+
+  /* Code blocks */
+  pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 16px 20px;
+    border-radius: 8px;
+    overflow-x: auto;
+    direction: ltr;
+    text-align: left;
+    font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+    font-size: 13.5px;
+    line-height: 1.6;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+  }
+  pre .kw { color: #c084fc; font-weight: 600; }
+  pre .str { color: #86efac; }
+  pre .num { color: #fbbf24; }
+  pre .com { color: #94a3b8; font-style: italic; }
+  pre .fn { color: #60a5fa; }
+  pre .self { color: #f472b6; }
+  pre .hl { background: rgba(251,191,36,.15); padding: 2px 0; }
+
+  code:not(pre code) {
+    background: #f1f5f9;
+    color: #be185d;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    direction: ltr;
+    display: inline-block;
+  }
+
+  /* Callouts */
+  .callout {
+    background: #fef3c7;
+    border-right: 4px solid var(--warn);
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .callout strong { color: #92400e; }
+
+  .tip {
+    background: #dcfce7;
+    border-right: 4px solid var(--ok);
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+
+  /* Criticality badges */
+  .crit {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin: 0 4px;
+  }
+  .c3 { background: #fee2e2; color: var(--critical); }
+  .c2 { background: #fef3c7; color: #92400e; }
+  .c1 { background: #d1fae5; color: #065f46; }
+
+  /* Snippet card */
+  .snippet {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 20px 0;
+    box-shadow: var(--shadow);
+  }
+  .snippet-header {
+    background: linear-gradient(90deg, #1e3a8a, #1e40af);
+    color: white;
+    padding: 10px 16px;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .snippet-header .num-badge {
+    background: rgba(255,255,255,.2);
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 13px;
+  }
+  .snippet-header.crit-3 { background: linear-gradient(90deg, #991b1b, #dc2626); }
+  .snippet-header.crit-2 { background: linear-gradient(90deg, #92400e, #d97706); }
+  .snippet-header.crit-1 { background: linear-gradient(90deg, #065f46, #16a34a); }
+  .snippet-body { padding: 0; }
+  .snippet-body pre { border-radius: 0; margin: 0; }
+  .snippet-explain {
+    background: #f8fafc;
+    padding: 12px 16px;
+    font-size: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Phase timeline */
+  .timeline {
+    border-right: 3px solid var(--accent);
+    padding-right: 20px;
+    margin: 20px 12px;
+  }
+  .phase {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+  .phase::before {
+    content: '';
+    position: absolute;
+    right: -29px;
+    top: 18px;
+    width: 14px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    border: 3px solid white;
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .phase h4 {
+    margin: 0 0 6px 0;
+    color: var(--accent);
+  }
+
+  /* Print */
+  @media print {
+    .layout { grid-template-columns: 1fr; padding: 0; }
+    aside { display: none; }
+    main { border: none; box-shadow: none; padding: 0; }
+    pre { font-size: 11px; }
+    section { page-break-inside: avoid; }
+  }
+
+  /* Anchor links */
+  .anchor {
+    color: var(--muted);
+    text-decoration: none;
+    margin-right: 8px;
+    font-weight: normal;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  h2:hover .anchor, h3:hover .anchor { opacity: 1; }
+
+  /* Back to top button */
+  .back-top {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    background: var(--accent);
+    color: white;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    font-size: 20px;
+    box-shadow: 0 4px 12px rgba(37,99,235,.3);
+    transition: all 0.2s;
+  }
+  .back-top:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(37,99,235,.4); }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<aside>
+  <h2>📑 תוכן עניינים</h2>
+  <ol>
+    <li><a href="#s1">חיפוש מהיר — שאלה → קוד</a></li>
+    <li><a href="#s2">מפת הקבצים</a></li>
+    <li><a href="#s3">Python — מפת פונקציות</a></li>
+    <li><a href="#s4">Java GUI — מפת פונקציות</a></li>
+    <li><a href="#s5">קבועים קריטיים</a></li>
+    <li><a href="#s6">Snippets חובה</a></li>
+    <li><a href="#s7">Data Flow — זרימות</a></li>
+    <li><a href="#s8">מילון מונחים</a></li>
+    <li><a href="#s9">תיקונים שעשיתי</a></li>
+  </ol>
+</aside>
+
+<main>
+
+<header class="title">
+  <h1>🗺️ Code Map · מפת הקוד המאוחדת</h1>
+  <div class="subtitle">קובץ אחד שאני פותח ב-VSCode במהלך הבחינה</div>
+  <div class="meta">פרויקט BitTorrent · ~6,150 שורות קוד · 10 קבצי Python + 3 קבצי Java</div>
+</header>
+
+<div class="tip">
+  <strong>💡 איך להשתמש:</strong>
+  כל פונקציה / קבוע / snippet קריטי — עם <code>file:line</code> והסבר בשורה. הסדר לפי <strong>קריטיות</strong>:
+  <span class="crit c3">⭐⭐⭐ גבוהה</span>
+  <span class="crit c2">⭐⭐ בינונית</span>
+  <span class="crit c1">⭐ נמוכה</span>
+</div>
+
+<!-- ============================================================ -->
+<section id="s1">
+<h2>🔍 1. טבלת חיפוש מהיר — שאלה → <code>code:line</code></h2>
+
+<table>
+<thead>
+<tr><th>הבוחן שואל...</th><th>אני קופץ ל...</th><th>מה להגיד בשורה</th></tr>
+</thead>
+<tbody>
+<tr><td>"תראה לי handshake"</td><td><code>peer_connection.py:207</code> <code>_send_handshake</code></td><td>68 בתים: 1+19+8+20+20</td></tr>
+<tr><td>"איך מאמתים handshake?"</td><td><code>peer_connection.py:219</code> <code>_receive_handshake</code></td><td>בודק pstrlen=19, info_hash תואם</td></tr>
+<tr><td>"איך rarest-first?"</td><td><code>piece_manager.py:279</code> <code>select_piece_rarest_first</code></td><td>min freq + <code>random.choice</code> על tie set</td></tr>
+<tr><td>"איך random selection?"</td><td><code>piece_manager.py:319</code> <code>select_piece_random</code></td><td>baseline להשוואה</td></tr>
+<tr><td>"איך tit-for-tat?"</td><td><code>download_manager.py:610</code> <code>_tit_for_tat_unchoke</code></td><td>5 שלבים, window 20s, top-4</td></tr>
+<tr><td>"Optimistic Unchoke?"</td><td><code>download_manager.py:~687</code> בתוך tit-for-tat</td><td><code>random.choice(non_snubbed_remaining)</code></td></tr>
+<tr><td>"Seeding mode?"</td><td><code>download_manager.py:706</code> <code>_seed_mode_unchoke</code></td><td>ממיין לפי upload rate, לא download</td></tr>
+<tr><td>"Snubbing?"</td><td><code>peer_connection.py:592</code> <code>is_snubbed</code></td><td>unchoked + 60s שקט</td></tr>
+<tr><td>"Sliding window?"</td><td><code>peer_connection.py:552</code> <code>bytes_received_in_window</code></td><td>deque של (t,bytes), sum מ-cutoff</td></tr>
+<tr><td>"SHA-1 verification?"</td><td><code>security.py:96</code> <code>verify_piece</code></td><td>2 שורות, hashlib.sha1</td></tr>
+<tr><td>"Hash failure → ban?"</td><td><code>security.py:109</code> <code>report_hash_failure</code></td><td>&gt;=3 → <code>_ban_peer</code></td></tr>
+<tr><td>"info_hash computation"</td><td><code>torrent_metadata.py:~100</code> בתוך <code>_parse_metadata</code></td><td>re-encode info dict → SHA-1</td></tr>
+<tr><td>"Length-prefix framing?"</td><td><code>peer_connection.py:271</code> <code>_read_message</code></td><td><code>readexactly(4)</code> → uint32 → readexactly(len)</td></tr>
+<tr><td>"DoS protection?"</td><td><code>peer_connection.py:~282</code></td><td><code>MAX_MESSAGE_SIZE = 2MB</code> cap</td></tr>
+<tr><td>"Upload path?"</td><td><code>download_manager.py:432</code> <code>_serve_block_request</code></td><td>4 ולידציות → executor → send_piece</td></tr>
+<tr><td>"PIECE handler?"</td><td><code>download_manager.py:~374</code> בתוך <code>_on_peer_message</code></td><td>submit_block → SHA-1 → write → broadcast HAVE</td></tr>
+<tr><td>"Flask ↔ asyncio?"</td><td><code>api_server.py:61</code> <code>_run_async</code></td><td><code>run_coroutine_threadsafe</code></td></tr>
+<tr><td>"איפה ה-event loop?"</td><td><code>api_server.py:44</code> <code>_start_event_loop</code></td><td>daemon thread עם new_event_loop</td></tr>
+<tr><td>"Compact peers parsing?"</td><td><code>tracker_client.py:104</code> <code>_parse_compact_peers</code></td><td>6 בתים: 4 IP + 2 port (big-endian)</td></tr>
+<tr><td>"Bencode dict canonical?"</td><td><code>bencode.py:110</code> <code>_encode_dict</code></td><td>sorted keys (UTF-8)</td></tr>
+<tr><td>"Bencode int validation?"</td><td><code>bencode.py:146</code> <code>_decode_int</code></td><td>אין leading zero, אין -0</td></tr>
+<tr><td>"Choke loop?"</td><td><code>download_manager.py:590</code> <code>_choke_loop</code></td><td>כל 10s טריגר tit-for-tat</td></tr>
+<tr><td>"Keep-alive?"</td><td><code>download_manager.py:770</code> <code>_keep_alive_loop</code></td><td>כל 60s</td></tr>
+<tr><td>"Disk write async?"</td><td><code>download_manager.py:804</code> <code>_write_piece_sync</code></td><td>רץ ב-ThreadPoolExecutor(2)</td></tr>
+<tr><td>"Endgame mode?"</td><td><code>piece_manager.py:450</code> <code>find_in_progress_piece</code></td><td>request חופף בסוף ההורדה</td></tr>
+<tr><td>"Persistence?"</td><td><code>download_manager.py:966</code> <code>_save_state</code> + <code>:1014</code></td><td>JSON ב-<code>data/state/</code></td></tr>
+<tr><td>"Tracker announce URL?"</td><td><code>tracker_client.py:251</code> <code>_build_announce_url</code></td><td>URL-encode info_hash + peer_id</td></tr>
+<tr><td>"ה-GUI polling?"</td><td><code>TorrentClientGUI.java</code> ScheduledExecutorService</td><td>כל 500ms <code>/torrents</code></td></tr>
+<tr><td>"התראת COMPLETED?"</td><td><code>TorrentClientGUI.java</code> <code>previousStates</code> map</td><td>מעבר state → popup</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ============================================================ -->
+<section id="s2">
+<h2>📂 2. מפת הקבצים במבט-על</h2>
+
+<h3>Python Engine — <code>python_engine/</code></h3>
+<table>
+<thead><tr><th>קובץ</th><th>שורות</th><th>תפקיד</th><th>קריטיות</th></tr></thead>
+<tbody>
+<tr><td><code>download_manager.py</code></td><td>1,311</td><td>המתאם המרכזי — כל החלטה עוברת פה</td><td><span class="crit c3">⭐⭐⭐</span></td></tr>
+<tr><td><code>peer_connection.py</code></td><td>620</td><td>TCP + BEP-3 wire protocol</td><td><span class="crit c3">⭐⭐⭐</span></td></tr>
+<tr><td><code>api_server.py</code></td><td>530</td><td>Flask REST + גשר asyncio + SQLite</td><td><span class="crit c2">⭐⭐</span></td></tr>
+<tr><td><code>piece_manager.py</code></td><td>473</td><td>מעקב pieces + rarest-first</td><td><span class="crit c3">⭐⭐⭐</span></td></tr>
+<tr><td><code>tracker_client.py</code></td><td>337</td><td>HTTP tracker + parsing peers</td><td><span class="crit c2">⭐⭐</span></td></tr>
+<tr><td><code>security.py</code></td><td>326</td><td>מוניטין + SHA-1 + ban logic</td><td><span class="crit c2">⭐⭐</span></td></tr>
+<tr><td><code>torrent_metadata.py</code></td><td>241</td><td>פענוח .torrent + info_hash</td><td><span class="crit c2">⭐⭐</span></td></tr>
+<tr><td><code>bencode.py</code></td><td>231</td><td>קידוד/פענוח canonical</td><td><span class="crit c2">⭐⭐</span></td></tr>
+<tr><td><code>main.py</code></td><td>190</td><td>CLI entry</td><td><span class="crit c1">⭐</span></td></tr>
+<tr><td><code>__main__.py</code></td><td>4</td><td><code>python -m python_engine</code></td><td><span class="crit c1">⭐</span></td></tr>
+</tbody>
+</table>
+<p><strong>סה"כ Python:</strong> ~4,260 שורות</p>
+
+<h3>Java GUI — <code>java_gui/src/</code></h3>
+<table>
+<thead><tr><th>קובץ</th><th>תפקיד</th></tr></thead>
+<tbody>
+<tr><td><code>TorrentClientGUI.java</code></td><td>חלון ראשי, JTable, toolbar, polling 500ms</td></tr>
+<tr><td><code>ApiService.java</code></td><td>HTTP client → Python API</td></tr>
+<tr><td><code>AlgorithmStatsDialog.java</code></td><td>חלון Algorithm Stats + bar chart Java2D</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ============================================================ -->
+<section id="s3">
+<h2>🐍 3. Python Engine — מפת פונקציות מלאה</h2>
+
+<h3><code>bencode.py</code> (231) — Serialization</h3>
+<table>
+<thead><tr><th>Line</th><th>Symbol</th><th>תפקיד</th></tr></thead>
+<tbody>
+<tr><td>15</td><td><code>class BencodeDecodeError</code></td><td>exception לפענוח</td></tr>
+<tr><td>20</td><td><code>class BencodeEncodeError</code></td><td>exception לקידוד</td></tr>
+<tr><td><strong>25</strong></td><td><strong><code>encode(data)</code></strong></td><td>API ראשי — int/bytes/str/list/dict → bytes</td></tr>
+<tr><td><strong>51</strong></td><td><strong><code>decode(data)</code></strong></td><td>API ראשי — bytes → Python obj</td></tr>
+<tr><td>74</td><td><code>decode_partial(data)</code></td><td>מחזיר (value, remaining) לזרמים</td></tr>
+<tr><td>94</td><td><code>_encode_int</code></td><td><code>i42e</code></td></tr>
+<tr><td>98</td><td><code>_encode_bytes</code></td><td><code>5:hello</code></td></tr>
+<tr><td>102</td><td><code>_encode_list</code></td><td><code>l...e</code></td></tr>
+<tr><td><strong>110</strong></td><td><strong><code>_encode_dict</code></strong></td><td><code>d...e</code> עם <strong>sorted keys</strong> (canonical)</td></tr>
+<tr><td>128</td><td><code>_decode_next</code></td><td>dispatch לפי first byte</td></tr>
+<tr><td><strong>146</strong></td><td><strong><code>_decode_int</code></strong></td><td><code>i...e</code> + <strong>דחיית leading zero ו--0</strong></td></tr>
+<tr><td>172</td><td><code>_decode_bytes</code></td><td><code>len:data</code></td></tr>
+<tr><td>195</td><td><code>_decode_list</code></td><td>רקורסיבי</td></tr>
+<tr><td><strong>210</strong></td><td><strong><code>_decode_dict</code></strong></td><td>בודק <strong>שמפתחות ממוינים</strong> (אחרת error)</td></tr>
+</tbody>
+</table>
+<div class="callout"><strong>Validations חיוניות:</strong> sorted keys / no leading zeros / no -0 / strict length.</div>
+
+<h3><code>torrent_metadata.py</code> (241) — .torrent parsing</h3>
+<table>
+<thead><tr><th>Line</th><th>Symbol</th><th>תפקיד</th></tr></thead>
+<tbody>
+<tr><td>15</td><td><code>TorrentMetadataError</code></td><td>exception</td></tr>
+<tr><td>20</td><td><code>class FileInfo(path, size)</code></td><td>קובץ במולטי-file</td></tr>
+<tr><td><strong>31</strong></td><td><strong><code>class TorrentMetadata</code></strong></td><td>מחלקה ראשית</td></tr>
+<tr><td>49</td><td><code>__init__(torrent_path=, torrent_data=)</code></td><td>טוען מ-path או מ-bytes</td></tr>
+<tr><td><strong>79</strong></td><td><strong><code>_parse_metadata()</code></strong></td><td>bencode.decode → שולף שדות → <strong>מחשב info_hash</strong></td></tr>
+<tr><td>155</td><td><code>info_hash_hex()</code></td><td>להצגה</td></tr>
+<tr><td>159</td><td><code>info_hash_urlencoded()</code></td><td>ל-tracker GET</td></tr>
+<tr><td>164</td><td><code>get_piece_hash(idx)</code></td><td>20 בתים מ-pieces</td></tr>
+<tr><td><strong>180</strong></td><td><strong><code>get_piece_length(idx)</code></strong></td><td>ה-piece האחרון יכול להיות קצר</td></tr>
+<tr><td>199</td><td><code>get_file_offset(piece_idx)</code></td><td>למולטי-file: <code>[(path, offset, length)]</code></td></tr>
+</tbody>
+</table>
+<p><strong>שדות מרכזיים:</strong> <code>announce</code>, <code>announce_list</code>, <code>piece_length</code>, <code>pieces</code>, <code>info_hash</code>, <code>files</code>, <code>total_size</code>, <code>num_pieces</code>.</p>
+<p><strong>ה-snippet הקריטי (בתוך <code>_parse_metadata</code>):</strong></p>
+<pre><span class="com"># re-encode canonical, compute SHA-1</span>
+info_encoded = bencode.encode(info)
+<span class="self">self</span>.info_hash = hashlib.sha1(info_encoded).digest()  <span class="com"># 20 bytes</span></pre>
+
+<h3><code>tracker_client.py</code> (337) — Tracker HTTP</h3>
+<table>
+<thead><tr><th>Line</th><th>Symbol</th><th>תפקיד</th></tr></thead>
+<tbody>
+<tr><td><strong>27</strong></td><td><strong><code>generate_peer_id()</code></strong></td><td><code>b'-PG0001-' + 12 random</code></td></tr>
+<tr><td>36</td><td><code>class Peer(ip, port, peer_id?)</code></td><td>dataclass + <code>__hash__</code> ל-set</td></tr>
+<tr><td><strong>56</strong></td><td><strong><code>class TrackerResponse</code></strong></td><td>parse של תשובת tracker</td></tr>
+<tr><td>71</td><td><code>_parse(data)</code></td><td>dispatch compact / regular</td></tr>
+<tr><td><strong>104</strong></td><td><strong><code>_parse_compact_peers(data)</code></strong></td><td>6 בתים: 4 IP + 2 port <code>!H</code></td></tr>
+<tr><td>121</td><td><code>_parse_regular_peers(data)</code></td><td>dict format (פחות נפוץ)</td></tr>
+<tr><td><strong>135</strong></td><td><strong><code>class TrackerClient</code></strong></td><td>מחלקה ראשית</td></tr>
+<tr><td>142</td><td><code>__init__(announce_url, info_hash, peer_id, port=6881)</code></td><td></td></tr>
+<tr><td>169</td><td><code>_get_session()</code></td><td>aiohttp session lazy</td></tr>
+<tr><td><strong>175</strong></td><td><strong><code>announce(event=)</code></strong></td><td>HTTP GET → TrackerResponse</td></tr>
+<tr><td><strong>251</strong></td><td><strong><code>_build_announce_url(params)</code></strong></td><td>URL-encode info_hash + peer_id</td></tr>
+<tr><td>269</td><td><code>start_periodic_announce(callback)</code></td><td>background task</td></tr>
+<tr><td>281</td><td><code>_periodic_announce_loop(callback)</code></td><td>sleep(interval) loop</td></tr>
+<tr><td>305</td><td><code>stop()</code></td><td>event=stopped</td></tr>
+<tr><td>324</td><td><code>completed()</code></td><td>event=completed</td></tr>
+<tr><td>328</td><td><code>update_stats(up, down, left)</code></td><td>לפני announce הבא</td></tr>
+</tbody>
+</table>
+<div class="callout"><strong>קבוע חשוב:</strong> <code>PEER_ID_PREFIX = b'-PG0001-'</code></div>
+
+<h3><code>peer_connection.py</code> (620) <span class="crit c3">⭐⭐⭐</span> — Peer Wire Protocol</h3>
+<table>
+<thead><tr><th>Line</th><th>Symbol</th><th>תפקיד</th></tr></thead>
+<tbody>
+<tr><td>43</td><td><code>class MessageType(IntEnum)</code></td><td>CHOKE=0, UNCHOKE=1, INTERESTED=2, ... PIECE=7, CANCEL=8</td></tr>
+<tr><td>57</td><td><code>class PeerMessage</code></td><td>wrapper + parsed properties</td></tr>
+<tr><td>66-98</td><td>properties: piece_index, block_offset, block_length, block_data, bitfield_data</td><td>unpack מ-payload</td></tr>
+<tr><td>108</td><td><code>PeerConnectionError</code></td><td>exception</td></tr>
+<tr><td><strong>113</strong></td><td><strong><code>class PeerConnection</code></strong></td><td>חיבור TCP יחיד</td></tr>
+<tr><td>125</td><td><code>__init__(ip, port, info_hash, peer_id, num_pieces, on_message)</code></td><td>state init</td></tr>
+<tr><td>187</td><td><code>connect()</code></td><td>TCP + handshake</td></tr>
+<tr><td><strong>207</strong></td><td><strong><code>_send_handshake()</code></strong> ⭐</td><td>68 בתים</td></tr>
+<tr><td><strong>219</strong></td><td><strong><code>_receive_handshake()</code></strong> ⭐</td><td>ולידציות (pstrlen, info_hash match)</td></tr>
+<tr><td>249</td><td><code>start_message_loop()</code></td><td>יוצר asyncio task</td></tr>
+<tr><td>253</td><td><code>_message_loop()</code></td><td>infinite read → handle</td></tr>
+<tr><td><strong>271</strong></td><td><strong><code>_read_message()</code></strong> ⭐</td><td>length-prefix framing + DoS cap</td></tr>
+<tr><td><strong>314</strong></td><td><strong><code>_handle_message(msg)</code></strong> ⭐</td><td>switch לפי type → updates state → on_message callback</td></tr>
+<tr><td>375</td><td><code>_parse_bitfield(data)</code></td><td>bits → List[bool]</td></tr>
+<tr><td>386</td><td><code>send_message(type, payload)</code></td><td>length prefix + write + drain</td></tr>
+<tr><td>409-447</td><td>send_interested / not_interested / choke / unchoke / have / bitfield / request</td><td>שליחת הודעות מסוג זה</td></tr>
+<tr><td><strong>468</strong></td><td><strong><code>send_piece(idx, begin, data)</code></strong> ⭐</td><td>upload!</td></tr>
+<tr><td>488</td><td><code>send_cancel(idx, begin, length)</code></td><td>endgame</td></tr>
+<tr><td>493</td><td><code>send_keep_alive()</code></td><td>length=0</td></tr>
+<tr><td>497</td><td><code>disconnect()</code></td><td>close writer</td></tr>
+<tr><td>519-546</td><td>can_request, request_capacity, has_piece, time_since_last_activity</td><td>helpers</td></tr>
+<tr><td><strong>552</strong></td><td><strong><code>bytes_received_in_window(20)</code></strong> ⭐</td><td>sum deque מ-cutoff</td></tr>
+<tr><td>572</td><td><code>bytes_sent_in_window(20)</code></td><td>למוד seeding</td></tr>
+<tr><td><strong>592</strong></td><td><strong><code>is_snubbed(60)</code></strong> ⭐</td><td>unchoked + 60s שקט</td></tr>
+</tbody>
+</table>
+<div class="callout"><strong>State המרכזי:</strong> <code>am_choking</code>, <code>am_interested</code> (אני) / <code>peer_choking</code>, <code>peer_interested</code> (הוא) / <code>peer_pieces: List[bool]</code> / <code>_download_samples: deque[(t, bytes)]</code></div>
+
+<h3><code>piece_manager.py</code> (473) <span class="crit c3">⭐⭐⭐</span> — Pieces + Algorithm</h3>
+<table>
+<thead><tr><th>Line</th><th>Symbol</th><th>תפקיד</th></tr></thead>
+<tbody>
+<tr><td>19</td><td><code>class PieceStatus(Enum)</code></td><td>MISSING / IN_PROGRESS / COMPLETED</td></tr>
+<tr><td><strong>26</strong></td><td><strong><code>class Block(piece_index, offset, length)</code></strong></td><td>block 16KB</td></tr>
+<tr><td>42-57</td><td>is_requestable, mark_requested, clear_request</td><td>state management</td></tr>
+<tr><td><strong>67</strong></td><td><strong><code>class Piece(index, length, expected_hash)</code></strong></td><td>piece ~256KB = 16 blocks</td></tr>
+<tr><td>88</td><td><code>num_blocks</code></td><td>length / BLOCK_SIZE עם ceil</td></tr>
+<tr><td>92</td><td><code>is_complete</code></td><td>כל blocks הגיעו</td></tr>
+<tr><td><strong>95</strong></td><td><strong><code>submit_block(offset, data) → bool</code></strong></td><td>True אם piece שלם</td></tr>
+<tr><td><strong>114</strong></td><td><strong><code>verify_hash() → bool</code></strong></td><td>SHA-1(data) == expected</td></tr>
+<tr><td>120-138</td><td>data, get_pending_blocks, get_requestable_blocks, clear_peer_requests, reset</td><td>API נוסף</td></tr>
+<tr><td><strong>148</strong></td><td><strong><code>class PieceManager</code></strong></td><td>מנהל הכל</td></tr>
+<tr><td>155</td><td><code>__init__(num_pieces, piece_length, total_size, piece_hashes)</code></td><td></td></tr>
+<tr><td>194-216</td><td>completed_pieces, bytes_downloaded, bytes_remaining, progress, is_complete</td><td>state properties</td></tr>
+<tr><td><strong>220</strong></td><td><strong><code>update_peer_pieces(peer_key, pieces)</code></strong></td><td>על BITFIELD — מעדכן _peer_frequency</td></tr>
+<tr><td><strong>246</strong></td><td><strong><code>update_peer_have(peer_key, piece_idx)</code></strong></td><td>על HAVE — increment frequency</td></tr>
+<tr><td>265</td><td><code>remove_peer(peer_key)</code></td><td>decrement frequencies</td></tr>
+<tr><td><strong>279</strong></td><td><strong><code>select_piece_rarest_first(peer_pieces)</code></strong> ⭐⭐⭐</td><td>min freq + random.choice על tie</td></tr>
+<tr><td>319</td><td><code>select_piece_random(peer_pieces)</code></td><td>baseline</td></tr>
+<tr><td><strong>343</strong></td><td><strong><code>start_piece(idx) → List[Block]</code></strong></td><td>סימון IN_PROGRESS</td></tr>
+<tr><td>357</td><td><code>reset_stale_pieces(timeout)</code></td><td>pieces תקועים → MISSING</td></tr>
+<tr><td><strong>377</strong></td><td><strong><code>submit_block(piece_idx, offset, data)</code></strong></td><td>delegate ל-piece</td></tr>
+<tr><td><strong>395</strong></td><td><strong><code>verify_piece(piece_idx)</code></strong></td><td>wrapper לhash check</td></tr>
+<tr><td>414</td><td><code>get_piece_data(piece_idx)</code></td><td>לupload</td></tr>
+<tr><td>428-440</td><td>get_status_list, get_frequency, has_piece, clear_peer_requests</td><td>helpers</td></tr>
+<tr><td><strong>450</strong></td><td><strong><code>find_in_progress_piece(...)</code></strong></td><td>endgame mode</td></tr>
+<tr><td>471</td><td><code>get_our_bitfield()</code></td><td></td></tr>
+</tbody>
+</table>
+<p><strong>מבני נתונים פנימיים (חשוב לזכור!):</strong></p>
+<pre><span class="self">self</span>._peer_frequency: Dict[<span class="kw">int</span>, <span class="kw">int</span>]      <span class="com"># piece i → כמה peers מחזיקים</span>
+<span class="self">self</span>._peer_pieces: Dict[<span class="kw">str</span>, Set[<span class="kw">int</span>]]    <span class="com"># peer → set של pieces שלו</span>
+<span class="self">self</span>._piece_start_times: Dict[<span class="kw">int</span>, <span class="kw">float</span>] <span class="com"># לtimeout של stale</span>
+<span class="self">self</span>.rarest_selections: Dict[<span class="kw">int</span>, <span class="kw">int</span>]    <span class="com"># statistics לחלון GUI</span>
+<span class="self">self</span>._lock = threading.Lock()             <span class="com"># thread-safety</span></pre>
+
+<h3><code>download_manager.py</code> (1,311) <span class="crit c3">⭐⭐⭐</span> — Coordinator</h3>
+<table>
+<thead><tr><th>Line</th><th>Symbol</th><th>תפקיד</th></tr></thead>
+<tbody>
+<tr><td>42</td><td><code>class DownloadState(Enum)</code></td><td>QUEUED, RUNNING, PAUSED, COMPLETED, SEEDING, CANCELLED, ERROR</td></tr>
+<tr><td>58</td><td><code>class AlgorithmType(Enum)</code></td><td>RAREST_FIRST, RANDOM, TIT_FOR_TAT, ROUND_ROBIN</td></tr>
+<tr><td>66</td><td><code>class DownloadStats</code></td><td>bytes_downloaded/uploaded, speeds, peer counts</td></tr>
+<tr><td><strong>98</strong></td><td><strong><code>class Download</code></strong></td><td>מחלקה ראשית — הורדה יחידה</td></tr>
+<tr><td>105</td><td><code>__init__(torrent, download_dir, state_dir, piece_algo, peer_algo)</code></td><td></td></tr>
+<tr><td>166-203</td><td>_log, get_logs, progress, file_name, file_size, connected_peers, callbacks</td><td>state + observability</td></tr>
+<tr><td><strong>206</strong></td><td><strong><code>start()</code></strong></td><td>יוצר tasks + announce</td></tr>
+<tr><td><strong>219</strong></td><td><strong><code>_download_loop()</code></strong></td><td>הראשי: tracker → connect → request</td></tr>
+<tr><td>288</td><td><code>_cleanup_dead_peers()</code></td><td>מסיר disconnected</td></tr>
+<tr><td>301</td><td><code>_connect_to_peers()</code></td><td>concurrent gather</td></tr>
+<tr><td>320</td><td><code>_connect_peer(peer)</code></td><td>TCP + handshake + start_message_loop</td></tr>
+<tr><td><strong>349</strong></td><td><strong><code>_on_peer_message(conn, message)</code></strong> ⭐⭐⭐</td><td>switch: BITFIELD/HAVE/UNCHOKE/CHOKE/PIECE/REQUEST</td></tr>
+<tr><td><strong>~374</strong></td><td><strong>PIECE branch</strong> בתוך _on_peer_message</td><td>submit_block → SHA-1 (executor) → write → broadcast HAVE</td></tr>
+<tr><td><strong>432</strong></td><td><strong><code>_serve_block_request(conn, msg)</code></strong> ⭐</td><td>upload path</td></tr>
+<tr><td>472</td><td><code>_peer_has_needed_pieces(conn)</code></td><td>אם יש מה לרצות</td></tr>
+<tr><td>479</td><td><code>_request_pieces()</code></td><td>לולאה על peers</td></tr>
+<tr><td><strong>491</strong></td><td><strong><code>_request_from_peer(peer_key, conn)</code></strong></td><td>אסטרטגיית request לpeer יחיד</td></tr>
+<tr><td>547</td><td><code>_send_block_requests(conn, peer_key, ...)</code></td><td>batch של REQUEST</td></tr>
+<tr><td>565-578</td><td>_is_seeding, _maybe_enter_seeding</td><td>seeding logic</td></tr>
+<tr><td><strong>590</strong></td><td><strong><code>_choke_loop()</code></strong></td><td>כל 10s → tit-for-tat</td></tr>
+<tr><td><strong>610</strong></td><td><strong><code>_tit_for_tat_unchoke()</code></strong> ⭐⭐⭐</td><td>5 שלבים, top-4, Optimistic</td></tr>
+<tr><td>~687</td><td>(בתוך) Optimistic Unchoke</td><td><code>random.choice(non_snubbed_remaining)</code></td></tr>
+<tr><td><strong>706</strong></td><td><strong><code>_seed_mode_unchoke(interested)</code></strong></td><td>ממיין לפי <strong>upload</strong> rate</td></tr>
+<tr><td>747</td><td><code>_round_robin_unchoke()</code></td><td>אלגוריתם חלופי</td></tr>
+<tr><td><strong>770</strong></td><td><strong><code>_keep_alive_loop()</code></strong></td><td>כל 60s</td></tr>
+<tr><td>785-797</td><td>_broadcast_have, _safe_send_have</td><td>concurrent HAVE</td></tr>
+<tr><td><strong>804</strong></td><td><strong><code>_write_piece_sync(piece_idx)</code></strong></td><td>disk write — רץ ב-executor</td></tr>
+<tr><td>837</td><td><code>_write_piece(piece_idx)</code></td><td>async wrapper</td></tr>
+<tr><td>842</td><td><code>_read_block_sync(piece_idx, begin, length)</code></td><td>לupload — executor</td></tr>
+<tr><td>858</td><td><code>_complete_download()</code></td><td>על סיום</td></tr>
+<tr><td>885</td><td><code>_on_tracker_response(response)</code></td><td>מוסיף peers חדשים</td></tr>
+<tr><td>894</td><td><code>_update_speed()</code></td><td>חישוב KB/s</td></tr>
+<tr><td>917-946</td><td>pause, resume, cancel</td><td>state management</td></tr>
+<tr><td><strong>966</strong></td><td><strong><code>_save_state()</code></strong></td><td>JSON ל-<code>data/state/&lt;id&gt;.json</code></td></tr>
+<tr><td><strong>1014</strong></td><td><strong><code>from_state_file(cls, file)</code></strong></td><td>restore על startup</td></tr>
+<tr><td>1137</td><td><code>get_status() → dict</code></td><td>לAPI</td></tr>
+<tr><td><strong>1157</strong></td><td><strong><code>class DownloadManager</code></strong></td><td>מנהל את כל ה-Downloads</td></tr>
+<tr><td>1172</td><td><code>add_torrent(torrent, ...)</code></td><td>creates Download instance</td></tr>
+<tr><td>1200-1220</td><td>start / pause / resume / cancel / remove_download(id)</td><td>state mgmt</td></tr>
+<tr><td>1260-1270</td><td>get_all_status, get_download_status, get_download</td><td>queries</td></tr>
+<tr><td><strong>1274</strong></td><td><strong><code>restore_state()</code></strong></td><td>סריקת <code>data/state/*.json</code></td></tr>
+</tbody>
+</table>
+<div class="callout"><strong>Loops (asyncio tasks שרצים במקביל):</strong> <code>_download_loop</code> (ראשי), <code>_choke_loop</code> (10s), <code>_keep_alive_loop</code> (60s), <code>_periodic_announce_loop</code>, <code>_message_loop</code> per peer.</div>
+<div class="callout"><strong>Subsystems:</strong> <code>piece_manager</code>, <code>security</code>, <code>tracker</code>, <code>_executor: ThreadPoolExecutor(2)</code> (לhash + disk).</div>
+
+<h3><code>security.py</code> (326) — Reputation + Validation</h3>
+<table>
+<thead><tr><th>Line</th><th>Symbol</th><th>תפקיד</th></tr></thead>
+<tbody>
+<tr><td>24</td><td><code>class SecurityEvent</code></td><td>event לוג</td></tr>
+<tr><td><strong>42</strong></td><td><strong><code>class PeerReputation</code></strong></td><td>dataclass per peer</td></tr>
+<tr><td>58</td><td><code>should_ban</code></td><td>hash&gt;=3 OR violations&gt;=5</td></tr>
+<tr><td>66</td><td><code>trust_score</code></td><td>0..1 לפי success vs failures</td></tr>
+<tr><td><strong>79</strong></td><td><strong><code>class SecurityManager</code></strong></td><td>המנהל המרכזי</td></tr>
+<tr><td><strong>96</strong></td><td><strong><code>verify_piece(data, expected_hash)</code></strong> ⭐</td><td>hashlib.sha1 ==</td></tr>
+<tr><td><strong>109</strong></td><td><strong><code>report_hash_failure(peer_key, piece_idx)</code></strong></td><td>&gt;=3 → ban</td></tr>
+<tr><td>131</td><td><code>report_successful_piece(...)</code></td><td></td></tr>
+<tr><td>136</td><td><code>report_protocol_violation(peer_key, desc)</code></td><td>&gt;=5 → ban</td></tr>
+<tr><td>158-169</td><td>report_invalid_message, report_timeout</td><td></td></tr>
+<tr><td><strong>181</strong></td><td><strong><code>validate_message_length(peer_key, length)</code></strong></td><td>&lt;0 או &gt;2MB → false</td></tr>
+<tr><td>202</td><td><code>validate_piece_index(peer_key, idx, num_pieces)</code></td><td>בגבולות?</td></tr>
+<tr><td>213-233</td><td>is_peer_banned, get_*, on_event</td><td>queries</td></tr>
+<tr><td>242</td><td><code>_ban_peer(peer_key, reason)</code></td><td></td></tr>
+</tbody>
+</table>
+<pre><span class="kw">MAX_HASH_FAILURES_PER_PEER</span> = <span class="num">3</span>
+<span class="kw">MAX_PROTOCOL_VIOLATIONS_PER_PEER</span> = <span class="num">5</span>
+<span class="kw">MAX_MESSAGE_LENGTH</span> = <span class="num">2</span> * <span class="num">1024</span> * <span class="num">1024</span>  <span class="com"># 2MB</span></pre>
+
+<h3><code>api_server.py</code> (530) <span class="crit c2">⭐⭐</span> — REST + Bridge</h3>
+<table>
+<thead><tr><th>Line</th><th>Symbol</th><th>תפקיד</th></tr></thead>
+<tbody>
+<tr><td><strong>44</strong></td><td><strong><code>_start_event_loop()</code></strong></td><td>יוצר new_event_loop ב-daemon thread</td></tr>
+<tr><td><strong>61</strong></td><td><strong><code>_run_async(coro, timeout=60)</code></strong> ⭐</td><td><code>run_coroutine_threadsafe</code></td></tr>
+<tr><td>77</td><td><code>get_manager()</code></td><td>singleton</td></tr>
+<tr><td><strong>93</strong></td><td><strong><code>init_database()</code></strong></td><td>יוצר 4 tables ב-SQLite</td></tr>
+<tr><td>165</td><td><code>save_torrent_to_db(download)</code></td><td></td></tr>
+<tr><td>223</td><td><code>log_event_to_db(id, type, desc)</code></td><td></td></tr>
+<tr><td><strong>239</strong></td><td><strong><code>POST /torrents</code></strong></td><td>multipart upload + algorithms</td></tr>
+<tr><td>314-322</td><td><code>GET /torrents</code>, <code>GET /torrents/&lt;id&gt;</code></td><td></td></tr>
+<tr><td>332-379</td><td><code>POST /pause</code>, <code>/resume</code>, <code>/cancel</code>, <code>DELETE</code></td><td></td></tr>
+<tr><td><strong>399</strong></td><td><strong><code>GET /history</code></strong></td><td>מ-SQLite</td></tr>
+<tr><td>433</td><td><code>GET /events</code></td><td>security events</td></tr>
+<tr><td>458</td><td><code>GET /algorithm-stats/&lt;id&gt;</code></td><td>לחלון GUI</td></tr>
+<tr><td>473</td><td><code>GET /stats-summary</code></td><td>aggregates</td></tr>
+<tr><td><strong>495</strong></td><td><strong><code>GET /torrents/&lt;id&gt;/logs?since=N</code></strong></td><td>polling incremental</td></tr>
+<tr><td>508</td><td><code>GET /health</code></td><td></td></tr>
+<tr><td>520</td><td><code>run_server(host, port, debug)</code></td><td>entry point</td></tr>
+</tbody>
+</table>
+<div class="callout"><strong>Globals (חיוניים!):</strong> <code>_loop</code> (asyncio ב-daemon thread), <code>_loop_thread</code>, <code>_manager: DownloadManager</code> (singleton).</div>
+<div class="callout"><strong>SQLite (<code>data/history.db</code>):</strong> torrents / performance_stats / algorithm_stats / events.</div>
+
+<h3><code>main.py</code> (190) — CLI Entry</h3>
+<pre>python -m python_engine path/to/file.torrent -o ./downloads \
+  --piece-algorithm rarest_first --peer-algorithm tit_for_tat -v</pre>
+<p><code>argparse</code> + progress bar בreal-time + <code>signal.SIGINT</code> handler נקי. שימוש ישיר ב-<code>DownloadManager</code> (לא דרך API).</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s4">
+<h2>☕ 4. Java GUI — מפת פונקציות</h2>
+
+<h3><code>TorrentClientGUI.java</code> (~900) — Main Window</h3>
+<table>
+<thead><tr><th>תפקיד</th><th>מתודה / משתנה</th></tr></thead>
+<tbody>
+<tr><td>חלון ראשי</td><td><code>class TorrentClientGUI extends JFrame</code></td></tr>
+<tr><td>Polling</td><td><code>ScheduledExecutorService.scheduleAtFixedRate(... 500ms)</code></td></tr>
+<tr><td>Log polling</td><td><code>logSeqTracker: Map&lt;String, Integer&gt;</code></td></tr>
+<tr><td>מעבר COMPLETED</td><td><code>previousStates: Map&lt;String, String&gt;</code> → popup</td></tr>
+<tr><td>Toolbar</td><td>Add / Pause / Resume / Cancel / Delete / History / Algorithm Stats</td></tr>
+<tr><td>Algorithm dropdown</td><td>בחירת <code>rarest_first</code>/<code>random</code> + <code>tit_for_tat</code>/<code>round_robin</code></td></tr>
+<tr><td>Download dir picker</td><td><code>JFileChooser</code></td></tr>
+</tbody>
+</table>
+
+<h3><code>ApiService.java</code> (~430) — HTTP Client</h3>
+<table>
+<thead><tr><th>Line</th><th>Method</th><th>תפקיד</th></tr></thead>
+<tbody>
+<tr><td>45</td><td><code>TorrentStatus.fromJson(json)</code></td><td>factory מJSON</td></tr>
+<tr><td>98</td><td><code>startDownload(File)</code></td><td>overload פשוט</td></tr>
+<tr><td><strong>113</strong></td><td><strong><code>startDownload(File, pieceAlgo, peerAlgo, downloadDir)</code></strong></td><td>multipart POST</td></tr>
+<tr><td>176</td><td><code>getStatus() → List&lt;TorrentStatus&gt;</code></td><td></td></tr>
+<tr><td>201</td><td><code>getStatus(id) → TorrentStatus</code></td><td></td></tr>
+<tr><td>220-275</td><td><code>pause / resume / cancel / delete</code></td><td>state ops</td></tr>
+<tr><td>292-309</td><td><code>getHistory / clearHistory</code></td><td></td></tr>
+<tr><td>326-343</td><td><code>getAlgorithmStats / getStatsSummary</code></td><td>לbar chart</td></tr>
+<tr><td>361</td><td><code>getEvents(limit)</code></td><td></td></tr>
+<tr><td><strong>381</strong></td><td><strong><code>getLogs(id, sinceSeq)</code></strong></td><td>incremental polling</td></tr>
+<tr><td>399</td><td><code>isServerAvailable()</code></td><td></td></tr>
+<tr><td>417-426</td><td><code>sendRequest, checkResponse</code></td><td>helpers</td></tr>
+</tbody>
+</table>
+<div class="callout"><strong>Inner class <code>TorrentStatus</code>:</strong> id, filename, state, progress, speed, peers, etc.</div>
+
+<h3><code>AlgorithmStatsDialog.java</code> (~400) — Stats Window</h3>
+<ul>
+  <li>2 tabs: Piece Selection (bar chart) + General Statistics</li>
+  <li><strong>Bar chart ב-Java2D ידני</strong> — לא ספרייה (חשוב לציין!)</li>
+  <li>Fetches <code>/algorithm-stats/&lt;id&gt;</code> בכל פתיחה</li>
+</ul>
+</section>
+
+<!-- ============================================================ -->
+<section id="s5">
+<h2>⚙️ 5. קבועים קריטיים — Cheat Sheet</h2>
+
+<h3><code>peer_connection.py</code></h3>
+<pre><span class="kw">PROTOCOL_STRING</span> = <span class="str">b"BitTorrent protocol"</span>   <span class="com"># 19 bytes</span>
+<span class="kw">PROTOCOL_STRING_LEN</span> = <span class="num">19</span>
+<span class="kw">HANDSHAKE_LEN</span> = <span class="num">68</span>                          <span class="com"># 1+19+8+20+20</span>
+<span class="kw">BLOCK_SIZE</span> = <span class="num">16384</span>                          <span class="com"># 16 KB - block standard</span>
+<span class="kw">MAX_PENDING_REQUESTS</span> = <span class="num">50</span>                   <span class="com"># pipeline depth</span>
+<span class="kw">MAX_MESSAGE_SIZE</span> = <span class="num">2</span> * <span class="num">1024</span> * <span class="num">1024</span>          <span class="com"># 2 MB - DoS cap</span>
+<span class="kw">SNUB_THRESHOLD</span> = <span class="num">60.0</span>                       <span class="com"># seconds</span>
+<span class="kw">REQUEST_TIMEOUT</span> = <span class="num">30</span>
+<span class="kw">KEEP_ALIVE_INTERVAL</span> = <span class="num">60</span>
+<span class="kw">DOWNLOAD_SAMPLE_RETENTION</span> = <span class="num">30</span>              <span class="com"># seconds in deque</span></pre>
+
+<h3><code>download_manager.py</code></h3>
+<pre><span class="kw">CHOKE_INTERVAL</span> = <span class="num">10</span>                         <span class="com"># tit-for-tat round</span>
+<span class="kw">MAX_UNCHOKED_PEERS</span> = <span class="num">4</span>                      <span class="com"># top-K</span>
+<span class="kw">MAX_CONNECTIONS</span> = <span class="num">50</span>
+<span class="kw">KEEP_ALIVE_INTERVAL</span> = <span class="num">60</span>
+<span class="kw">PIECE_REQUEST_TIMEOUT</span> = <span class="num">30</span>
+<span class="kw">TIT_FOR_TAT_WINDOW</span> = <span class="num">20.0</span>                   <span class="com"># sliding window</span></pre>
+
+<h3><code>security.py</code></h3>
+<pre><span class="kw">MAX_HASH_FAILURES_PER_PEER</span> = <span class="num">3</span>              <span class="com"># → ban</span>
+<span class="kw">MAX_PROTOCOL_VIOLATIONS_PER_PEER</span> = <span class="num">5</span>        <span class="com"># → ban</span>
+<span class="kw">MAX_MESSAGE_LENGTH</span> = <span class="num">2</span> * <span class="num">1024</span> * <span class="num">1024</span></pre>
+
+<h3><code>tracker_client.py</code></h3>
+<pre><span class="kw">PEER_ID_PREFIX</span> = <span class="str">b'-PG0001-'</span>                <span class="com"># client identifier</span>
+<span class="kw">DEFAULT_PORT</span> = <span class="num">6881</span></pre>
+</section>
+
+<!-- ============================================================ -->
+<section id="s6">
+<h2>📝 6. Snippets חובה — מקוצרים</h2>
+
+<div class="snippet">
+  <div class="snippet-header crit-3">
+    <span>🔴 #1 Handshake</span>
+    <span class="num-badge"><code>peer_connection.py:207</code></span>
+  </div>
+  <div class="snippet-body">
+<pre>handshake = (
+    bytes([<span class="num">19</span>]) + <span class="str">b"BitTorrent protocol"</span> +  <span class="com"># 1+19</span>
+    <span class="str">b'\x00'</span> * <span class="num">8</span> +                            <span class="com"># 8 reserved</span>
+    <span class="self">self</span>.info_hash +                         <span class="com"># 20</span>
+    <span class="self">self</span>.our_peer_id                         <span class="com"># 20 = 68 total</span>
+)</pre>
+  </div>
+  <div class="snippet-explain"><strong>ולידציה (<code>:219</code>):</strong> <code>pstrlen==19</code> ∧ <code>pstr=="BitTorrent protocol"</code> ∧ <code>info_hash match</code>.</div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-3">
+    <span>🔴 #2 Rarest-First</span>
+    <span class="num-badge"><code>piece_manager.py:279</code></span>
+  </div>
+  <div class="snippet-body">
+<pre><span class="kw">for</span> i <span class="kw">in</span> range(num_pieces):
+    <span class="kw">if</span> piece.status != MISSING: <span class="kw">continue</span>
+    <span class="kw">if not</span> peer_pieces[i]: <span class="kw">continue</span>
+    freq = <span class="self">self</span>._peer_frequency.get(i, <span class="num">0</span>)
+    <span class="kw">if</span> freq &lt; min_freq: candidates = [i]; min_freq = freq
+    <span class="kw">elif</span> freq == min_freq: candidates.append(i)
+<span class="kw">return</span> random.choice(candidates)  <span class="com"># ⭐ anti-thundering-herd</span></pre>
+  </div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-3">
+    <span>🔴 #3 Tit-for-Tat (מבנה)</span>
+    <span class="num-badge"><code>download_manager.py:610</code></span>
+  </div>
+  <div class="snippet-body">
+<pre><span class="num">1</span>. interested = [conn <span class="kw">for</span> conn <span class="kw">if</span> peer_interested]
+<span class="num">2</span>. <span class="kw">if</span> seeding: <span class="kw">return</span> _seed_mode_unchoke(...)
+<span class="num">3</span>. split snubbed / non_snubbed <span class="kw">by</span> is_snubbed()
+<span class="num">4</span>. non_snubbed.sort(<span class="kw">by</span> bytes_received_in_window(<span class="num">20</span>s), reverse)
+<span class="num">5</span>. to_unchoke = top-<span class="num">4</span>; fill <span class="kw">from</span> snubbed <span class="kw">if</span> short
+<span class="num">6</span>. Optimistic: random.choice(non_snubbed_remaining)
+<span class="num">7</span>. apply send_choke / send_unchoke</pre>
+  </div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-3">
+    <span>🔴 #4 Sliding Window</span>
+    <span class="num-badge"><code>peer_connection.py:552</code></span>
+  </div>
+  <div class="snippet-body">
+<pre><span class="kw">def</span> <span class="fn">bytes_received_in_window</span>(window=<span class="num">20.0</span>):
+    cutoff = time.time() - window
+    <span class="kw">return</span> sum(b <span class="kw">for</span> t, b <span class="kw">in</span> <span class="self">self</span>._download_samples <span class="kw">if</span> t &gt;= cutoff)</pre>
+  </div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-3">
+    <span>🔴 #5 SHA-1 Verification</span>
+    <span class="num-badge"><code>security.py:96</code></span>
+  </div>
+  <div class="snippet-body">
+<pre><span class="kw">def</span> <span class="fn">verify_piece</span>(piece_data, expected_hash):
+    <span class="kw">return</span> hashlib.sha1(piece_data).digest() == expected_hash</pre>
+  </div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-3">
+    <span>🔴 #6 info_hash Computation</span>
+    <span class="num-badge"><code>torrent_metadata.py:~100</code></span>
+  </div>
+  <div class="snippet-body">
+<pre>info_encoded = bencode.encode(info)          <span class="com"># canonical re-encode!</span>
+<span class="self">self</span>.info_hash = hashlib.sha1(info_encoded).digest()</pre>
+  </div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-3">
+    <span>🔴 #7 Length-Prefix Framing</span>
+    <span class="num-badge"><code>peer_connection.py:271</code></span>
+  </div>
+  <div class="snippet-body">
+<pre>length_bytes = <span class="kw">await</span> reader.readexactly(<span class="num">4</span>)
+length, = struct.unpack(<span class="str">'&gt;I'</span>, length_bytes)
+<span class="kw">if</span> length == <span class="num">0</span>: <span class="kw">return</span> KEEP_ALIVE
+<span class="kw">if</span> length &gt; <span class="num">2</span>*<span class="num">1024</span>*<span class="num">1024</span>: <span class="kw">raise</span>  <span class="com"># DoS cap</span>
+msg_data = <span class="kw">await</span> reader.readexactly(length)</pre>
+  </div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-2">
+    <span>🟡 #8 Async Bridge</span>
+    <span class="num-badge"><code>api_server.py:61</code></span>
+  </div>
+  <div class="snippet-body">
+<pre><span class="kw">def</span> <span class="fn">_run_async</span>(coro, timeout=<span class="num">60</span>):
+    future = asyncio.run_coroutine_threadsafe(coro, _loop)
+    <span class="kw">return</span> future.result(timeout=timeout)</pre>
+  </div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-2">
+    <span>🟡 #9 Upload Path</span>
+    <span class="num-badge"><code>download_manager.py:432</code></span>
+  </div>
+  <div class="snippet-body">
+<pre><span class="kw">async def</span> <span class="fn">_serve_block_request</span>(conn, msg):
+    <span class="kw">if</span> conn.am_choking: <span class="kw">return</span>
+    <span class="com"># bounds + length + piece COMPLETED checks</span>
+    block = <span class="kw">await</span> loop.run_in_executor(_executor, _read_block_sync, ...)
+    <span class="kw">await</span> conn.send_piece(piece_idx, begin, block)
+    <span class="self">self</span>.stats.bytes_uploaded += len(block)</pre>
+  </div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-2">
+    <span>🟡 #10 PIECE Handler</span>
+    <span class="num-badge"><code>download_manager.py:~374</code></span>
+  </div>
+  <div class="snippet-body">
+<pre>is_complete = piece_manager.submit_block(idx, offset, data)
+<span class="kw">if</span> is_complete:
+    verified = <span class="kw">await</span> executor(verify_piece, idx)         <span class="com"># SHA-1</span>
+    <span class="kw">if</span> verified:
+        <span class="kw">await</span> executor(_write_piece_sync, idx)           <span class="com"># disk</span>
+        asyncio.create_task(_broadcast_have(idx))        <span class="com"># fire-and-forget</span>
+        <span class="kw">await</span> _request_from_peer(...)                    <span class="com"># keep busy</span>
+    <span class="kw">else</span>:
+        security.report_hash_failure(peer_key, idx)</pre>
+  </div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-2">
+    <span>🟡 #11 Compact Peers Parsing</span>
+    <span class="num-badge"><code>tracker_client.py:104</code></span>
+  </div>
+  <div class="snippet-body">
+<pre><span class="kw">if</span> len(data) % <span class="num">6</span> != <span class="num">0</span>: <span class="kw">return</span> []  <span class="com"># validation</span>
+<span class="kw">for</span> i <span class="kw">in</span> range(<span class="num">0</span>, len(data), <span class="num">6</span>):
+    ip = <span class="str">'.'</span>.join(str(b) <span class="kw">for</span> b <span class="kw">in</span> data[i:i+<span class="num">4</span>])
+    port, = struct.unpack(<span class="str">'!H'</span>, data[i+<span class="num">4</span>:i+<span class="num">6</span>])
+    peers.append(Peer(ip, port))</pre>
+  </div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-1">
+    <span>🟢 #12 Snubbing</span>
+    <span class="num-badge"><code>peer_connection.py:592</code></span>
+  </div>
+  <div class="snippet-body">
+<pre><span class="kw">def</span> <span class="fn">is_snubbed</span>(threshold=<span class="num">60.0</span>):
+    <span class="kw">if</span> <span class="self">self</span>.peer_choking: <span class="kw">return False</span>           <span class="com"># not snubbed if choked</span>
+    <span class="kw">if</span> <span class="self">self</span>._last_request_time &lt;= <span class="num">0</span>: <span class="kw">return False</span>
+    last_signal = max(<span class="self">self</span>._last_piece_time, <span class="self">self</span>._connect_time)
+    <span class="kw">return</span> (time.time() - last_signal) &gt; threshold</pre>
+  </div>
+</div>
+
+<div class="snippet">
+  <div class="snippet-header crit-1">
+    <span>🟢 #13 Bencode Canonical Dict</span>
+    <span class="num-badge"><code>bencode.py:110</code></span>
+  </div>
+  <div class="snippet-body">
+<pre><span class="kw">def</span> <span class="fn">_encode_dict</span>(value):
+    sorted_keys = sorted(value.keys(), key=...)  <span class="com"># ⭐ חיוני ל-info_hash</span>
+    <span class="kw">for</span> key <span class="kw">in</span> sorted_keys: ...</pre>
+  </div>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s7">
+<h2>🔁 7. Data Flow — זרימות מרכזיות</h2>
+
+<h3>A. הורדה חדשה (מהGUI עד דיסק)</h3>
+<pre>User clicks <span class="str">"Add"</span> <span class="kw">in</span> TorrentClientGUI
+  → ApiService.startDownload(file, algos, dir)
+  → POST /torrents (multipart) → api_server.py:<span class="num">239</span>
+  → _run_async(manager.add_torrent(...))                <span class="com">[bridge!]</span>
+  → DownloadManager.add_torrent() → creates Download
+  → Download.start()
+    → tracker_client.announce() → peers
+    → <span class="kw">for</span> each peer: _connect_peer()
+      → TCP + _send_handshake() + _receive_handshake()
+      → start_message_loop()
+    → _request_pieces() → _request_from_peer()
+      → piece_manager.select_piece_rarest_first()
+      → piece_manager.start_piece(idx)
+      → conn.send_request(idx, begin, length)</pre>
+
+<h3>B. בלוק מגיע (PIECE message)</h3>
+<pre>peer sends PIECE → _read_message() → _handle_message()
+  → on_message callback → Download._on_peer_message()
+  → PIECE branch:
+    → piece_manager.submit_block(idx, offset, data)
+    → <span class="kw">if</span> is_complete:
+      → executor(verify_piece) → SHA-1
+      → <span class="kw">if</span> verified:
+        → executor(_write_piece_sync) → disk
+        → create_task(_broadcast_have)  <span class="com">[HAVE לכולם]</span>
+        → _request_from_peer()          <span class="com">[תן עבודה חדשה]</span>
+      → <span class="kw">else</span>: security.report_hash_failure → maybe ban</pre>
+
+<h3>C. Choke decisions (Tit-for-Tat)</h3>
+<pre>_choke_loop runs every <span class="num">10</span>s
+  → _tit_for_tat_unchoke()
+    → split snubbed/non_snubbed
+    → sort <span class="kw">by</span> bytes_received_in_window(<span class="num">20</span>)
+    → top-<span class="num">4</span> + Optimistic (random)
+  → <span class="kw">for</span> each connection: send_choke() or send_unchoke()</pre>
+
+<h3>D. REQUEST מ-peer (upload)</h3>
+<pre>peer sends REQUEST → _handle_message() → on_message
+  → Download._on_peer_message() → REQUEST branch
+  → _serve_block_request(conn, msg)
+    → checks: am_choking, bounds, piece COMPLETED
+    → executor(_read_block_sync) → bytes
+    → conn.send_piece(idx, begin, data)
+    → stats.bytes_uploaded += len</pre>
+
+<h3>E. Polling מהGUI</h3>
+<pre>ScheduledExecutorService every <span class="num">500</span>ms:
+  → ApiService.getStatus() → GET /torrents
+  → api_server: _run_async(manager.get_all_status())
+  → update JTable
+  → <span class="kw">for</span> each torrent: getLogs(id, lastSeq) → append <span class="kw">to</span> log area
+  → detect state transition → popup <span class="kw">if</span> COMPLETED</pre>
+</section>
+
+<!-- ============================================================ -->
+<section id="s8">
+<h2>📖 8. מילון מונחים — הגייה</h2>
+<table>
+<thead><tr><th>מונח</th><th>הגייה / שימוש</th></tr></thead>
+<tbody>
+<tr><td><strong>BEP-3</strong></td><td>"בי-אי-פי-3" — BitTorrent Enhancement Proposal #3</td></tr>
+<tr><td><strong>bencode</strong></td><td>"בן-קוד" (לא ביי-אנקוד!)</td></tr>
+<tr><td><strong>handshake</strong></td><td>תמיד 68 בתים — לא 67 ולא 69</td></tr>
+<tr><td><strong>info_hash</strong></td><td>תמיד SHA-1, 20 בתים</td></tr>
+<tr><td><strong>piece</strong></td><td>בדרך כלל 256 KB = 16 blocks</td></tr>
+<tr><td><strong>block</strong></td><td>תמיד 16 KB (BLOCK_SIZE)</td></tr>
+<tr><td><strong>pstrlen</strong></td><td>אורך מחרוזת הפרוטוקול — תמיד 19</td></tr>
+<tr><td><strong>Tit-for-Tat</strong></td><td>טיט-פור-טאט מילה במילה</td></tr>
+<tr><td><strong>Snubbing</strong></td><td>סנאבינג — peer ש-unchoked אבל לא שולח 60s</td></tr>
+<tr><td><strong>Optimistic Unchoke</strong></td><td>בחירה אקראית של peer ל-unchoke</td></tr>
+<tr><td><strong>Endgame mode</strong></td><td>בסוף ההורדה — request חופף מכמה peers</td></tr>
+<tr><td><strong>Sliding window</strong></td><td>20 שניות (TIT_FOR_TAT_WINDOW)</td></tr>
+<tr><td><strong>SHAttered</strong></td><td>מתקפת collision על SHA-1 (2017)</td></tr>
+<tr><td><strong>BitTyrant</strong></td><td>NSDI 2007 — מאמר על ניצול tit-for-tat</td></tr>
+<tr><td><strong>BEP-52</strong></td><td>BitTorrent v2 — SHA-256 + Merkle Trees</td></tr>
+<tr><td><strong>canonical bencode</strong></td><td>מפתחות ממוינים, no leading zeros — חיוני ל-info_hash</td></tr>
+<tr><td><strong>thundering herd</strong></td><td>כולם רצים לאותו seeder — מנוטרל ע"י random.choice</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ============================================================ -->
+<section id="s9">
+<h2>🔧 9. תיקונים שעשיתי — ציר זמן של Phases</h2>
+
+<div class="timeline">
+
+<div class="phase">
+  <h4>Phase 4a · Sliding Window</h4>
+  <p><strong>תיקון:</strong> החלפת cumulative counter ב-sliding window.</p>
+  <p><strong>קובץ:</strong> <code>peer_connection.py:552</code> <code>bytes_received_in_window</code></p>
+  <p><strong>הסיפור:</strong> "בגרסה הראשונה השתמשתי במונה cumulative — <code>bytes_downloaded</code> שגדל מאז ההתחלה. ראיתי peer ששתק שעות אבל נשאר בראש כי הסכום שלו היה גבוה. החלפתי ל-<code>bytes_received_in_window(20)</code> — deque של דגימות, סוכם רק את ה-20 שניות האחרונות. עכשיו peer ש-stalls יורד מהראש תוך 20s."</p>
+</div>
+
+<div class="phase">
+  <h4>Phase 4b · Snubbed/Non-Snubbed Split</h4>
+  <p><strong>תיקון:</strong> פיצול snubbed/non_snubbed ב-tit-for-tat.</p>
+  <p><strong>קובץ:</strong> <code>download_manager.py:610</code></p>
+  <p><strong>הסיפור:</strong> snubbed peers לא צריכים להתחרות עם peers בריאים על top-4. הם בקטגוריה נפרדת — נכנסים רק אם אין מספיק non-snubbed.</p>
+</div>
+
+<div class="phase">
+  <h4>Phase 4c · Seed Mode Inverse Metric</h4>
+  <p><strong>תיקון:</strong> מטריקה הפוכה ב-seeding mode (לפי upload).</p>
+  <p><strong>קובץ:</strong> <code>download_manager.py:706</code> <code>_seed_mode_unchoke</code></p>
+  <p><strong>הסיפור:</strong> כשאני seeder אין לי מה להוריד — אז download rate לא רלוונטי. ממיין לפי <code>bytes_sent_in_window</code> — מי שמסכים לקבל הכי הרבה.</p>
+</div>
+
+<div class="phase">
+  <h4>Phase 6 · Upload Path</h4>
+  <p><strong>תיקון:</strong> הוספת נתיב upload אמיתי.</p>
+  <p><strong>קובץ:</strong> <code>download_manager.py:432</code> <code>_serve_block_request</code></p>
+  <p><strong>הסיפור:</strong> "הקוד לא היה קיים בכלל. REQUEST הגיע, נכנס ל-<code>_handle_message</code>, ולא היה לו handler. הוספתי <code>_serve_block_request</code> עם 4 ולידציות (choking, bounds, piece COMPLETED, oversized), קריאה מהדיסק ב-executor כדי לא לחסום את ה-event loop, ו-<code>send_piece</code>. בלי זה, seeding היה meaningless כי <code>bytes_uploaded</code> תמיד היה 0 וה-seed-mode unchoke מיין הכל לפי 0."</p>
+</div>
+
+</div>
+
+<div class="tip">
+  <strong>🎯 טיפ אחרון:</strong>
+  <ol>
+    <li>כל snippet — <code>file:line</code> מוכן בראש.</li>
+    <li>"איפה?" → §1 (table).</li>
+    <li>"איך?" → §6 (snippets).</li>
+    <li>"למה?" → §9 (תיקונים — תמיד יש סיפור).</li>
+    <li>"מה הקבוע?" → §5.</li>
+  </ol>
+  <p style="text-align:center; font-size:18px; margin-top:16px;"><strong>בהצלחה 🚀</strong></p>
+</div>
+</section>
+
+</main>
+</div>
+
+<a href="#" class="back-top" title="חזרה למעלה">↑</a>
+
+</body>
+</html>
